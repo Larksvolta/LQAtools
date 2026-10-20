@@ -87,6 +87,7 @@ public sealed partial class NotePage : UserControl
     private readonly Dictionary<string, HashSet<string>> _bugFilterSets = new();
     private TableView? _bugTableView;
     private TableViewColumn[]? _bugColumns;
+    private TextBox? _bugQuickSearch;
     private static readonly string[] _bugGroupLabels = { "Language Status", "Observed Results", "Expected Results", "Screenshots" };
     private readonly bool[] _bugGroupVisible = { true, true, true, true };
     private Grid? _bugGroupHeaderRow;
@@ -501,11 +502,11 @@ public sealed partial class NotePage : UserControl
         BugTrackerSidebar.Children.Add(filterPanel);
 
         var searchRow = new Grid { Margin = new Thickness(0, 0, 0, 6) };
-        var quickSearch = new TextBox
+        var quickSearch = _bugQuickSearch = new TextBox
         {
             PlaceholderText = "Quick Search",
             Text = _bugQuickSearchText,
-            Width = 914,
+            Width = GetBugTableWidth(),
             HorizontalAlignment = HorizontalAlignment.Left,
         };
         quickSearch.TextChanged += (_, _) =>
@@ -657,13 +658,18 @@ public sealed partial class NotePage : UserControl
             : null;
     }
 
-    private TableView BuildBugTableView()
+    private double GetBugTableWidth()
     {
         var visibleGroups = 0;
         foreach (var v in _bugGroupVisible)
             if (v) visibleGroups++;
-        var tableWidth = _bugColumnWidths[0] + _bugColumnWidths[1] + _bugColumnWidths[2]
+        return _bugColumnWidths[0] + _bugColumnWidths[1] + _bugColumnWidths[2]
             + 4 * _bugColumnWidths[3] * visibleGroups;
+    }
+
+    private TableView BuildBugTableView()
+    {
+        var tableWidth = GetBugTableWidth();
 
         var table = new TableView
         {
@@ -980,6 +986,8 @@ public sealed partial class NotePage : UserControl
         _bugTableView = BuildBugTableView();
         Grid.SetRow(_bugTableView, 3);
         BugTrackerSidebar.Children.Add(_bugTableView);
+        if (_bugQuickSearch is not null)
+            _bugQuickSearch.Width = GetBugTableWidth();
         RebuildBugTrackerRows();
     }
 
