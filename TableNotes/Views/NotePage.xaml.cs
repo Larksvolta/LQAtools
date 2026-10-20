@@ -86,11 +86,15 @@ public sealed partial class NotePage : UserControl
     private readonly Dictionary<string, TextBlock> _bugSortArrows = new();
     private readonly Dictionary<string, HashSet<string>> _bugFilterSets = new();
     private TableView? _bugTableView;
-    private bool _suppressBugSelection;
     private TableViewColumn[]? _bugColumns;
-    private static readonly SolidColorBrush _bugCellRed = new(Windows.UI.Color.FromArgb(0xFF, 0xFF, 0x00, 0x00));
-    private static readonly SolidColorBrush _bugCellGreen = new(Windows.UI.Color.FromArgb(0xFF, 0x00, 0xFF, 0x00));
+    private static readonly string[] _bugGroupLabels = { "Language Status", "Observed Results", "Expected Results", "Screenshots" };
+    private readonly bool[] _bugGroupVisible = { true, true, true, true };
+    private Grid? _bugGroupHeaderRow;
+    private readonly Border?[] _bugGroupHeaderBorders = new Border?[4];
+    private static readonly SolidColorBrush _bugCellRed = new(Windows.UI.Color.FromArgb(0xFF, 0xE5, 0x39, 0x35));
+    private static readonly SolidColorBrush _bugCellGreen = new(Windows.UI.Color.FromArgb(0xFF, 0x34, 0xC7, 0x59));
     private static readonly SolidColorBrush _bugCellGrey = new(Windows.UI.Color.FromArgb(0xFF, 0x6F, 0x6F, 0x6F));
+    private static readonly SolidColorBrush _bugCellYellow = new(Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xD2, 0x4D));
     private static readonly SolidColorBrush _bugCellBlack = new(Windows.UI.Color.FromArgb(0xFF, 0x00, 0x00, 0x00));
 
     private static readonly double[] _bugColumnWidths =
@@ -513,8 +517,12 @@ public sealed partial class NotePage : UserControl
         Grid.SetRow(searchRow, 1);
         BugTrackerSidebar.Children.Add(searchRow);
 
+        _bugGroupHeaderRow = BuildBugGroupHeaderRow();
+        Grid.SetRow(_bugGroupHeaderRow, 2);
+        BugTrackerSidebar.Children.Add(_bugGroupHeaderRow);
+
         _bugTableView = BuildBugTableView();
-        Grid.SetRow(_bugTableView, 2);
+        Grid.SetRow(_bugTableView, 3);
         BugTrackerSidebar.Children.Add(_bugTableView);
 
         var footer = new StackPanel
@@ -536,6 +544,7 @@ public sealed partial class NotePage : UserControl
         Grid.SetRow(footer, 4);
         BugTrackerSidebar.Children.Add(footer);
 
+        ApplyBugGroupVisibility();
         RebuildBugTrackerRows();
     }
 
@@ -643,30 +652,35 @@ public sealed partial class NotePage : UserControl
 
         _bugTableView.ItemsSource = list;
 
-        _suppressBugSelection = true;
         _bugTableView.SelectedItem = _selectedBugRow is not null && list.Contains(_selectedBugRow)
             ? _selectedBugRow
             : null;
-        _suppressBugSelection = false;
     }
 
     private TableView BuildBugTableView()
     {
+        var visibleGroups = 0;
+        foreach (var v in _bugGroupVisible)
+            if (v) visibleGroups++;
+        var tableWidth = _bugColumnWidths[0] + _bugColumnWidths[1] + _bugColumnWidths[2]
+            + 4 * _bugColumnWidths[3] * visibleGroups;
+
         var table = new TableView
         {
             AutoGenerateColumns = false,
             ShowExportOptions = false,
             IsReadOnly = true,
             HeadersVisibility = TableViewHeadersVisibility.Columns,
-            HeaderRowHeight = 50,
-            HeaderRowMinHeight = 50,
+            HeaderRowHeight = 30,
+            HeaderRowMinHeight = 30,
             RowMinHeight = 40,
             SelectionMode = ListViewSelectionMode.Single,
             CanSortColumns = false,
             CanFilterColumns = false,
             CanResizeColumns = false,
             CanReorderColumns = false,
-            Width = 914,
+            MinColumnWidth = 24,
+            Width = tableWidth,
             HorizontalAlignment = HorizontalAlignment.Left,
         };
 
@@ -685,7 +699,7 @@ public sealed partial class NotePage : UserControl
             table.Columns.Add(col);
 
         table.ContainerContentChanging += OnBugTableContainerContentChanging;
-        table.SelectionChanged += OnBugTableSelectionChanged;
+        table.CellDoubleTapped += OnBugTableDoubleTapped;
         return table;
     }
 
@@ -731,7 +745,6 @@ public sealed partial class NotePage : UserControl
             },
         };
 
-        string[] groupLabels = { "Language Status", "Observed Results", "Expected Results", "Screenshots" };
         string[] kinds = { "Lang", "Obs", "Exp", "Shot" };
 
         int i = 3;
@@ -743,10 +756,11 @@ public sealed partial class NotePage : UserControl
                 var key = _langMeta[l].Key;
                 cols.Add(new BugLangColumn
                 {
-                    Header = BuildBugLangHeader(key, _bugSortKeys[colIdx], groupLabels[g], l == 0, stroke, headerBg, textFg, bold),
+                    Header = BuildBugLangHeader(key, _bugSortKeys[colIdx], stroke, headerBg, textFg),
                     Kind = kinds[g],
                     Label = key,
                     Width = new GridLength(_bugColumnWidths[colIdx]),
+                    Visibility = _bugGroupVisible[g] ? Visibility.Visible : Visibility.Collapsed,
                 });
             }
         }
@@ -776,12 +790,9 @@ public sealed partial class NotePage : UserControl
         }
     }
 
-    private void OnBugTableSelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void OnBugTableDoubleTapped(object? sender, TableViewCellDoubleTappedEventArgs e)
     {
-        if (_suppressBugSelection)
-            return;
-
-        if (sender is TableView { SelectedItem: TableRow row })
+        if (e.Item is TableRow row)
             OnBugSelected(row);
     }
 
@@ -790,11 +801,12 @@ public sealed partial class NotePage : UserControl
         {
             "Affected" => _bugCellRed,
             "Not Affected" => _bugCellGreen,
+            "Pending" => _bugCellYellow,
             _ => _bugCellGrey,
         }
         : status switch
         {
-            "Pending" => _bugCellRed,
+            "Pending" => _bugCellYellow,
             "Done" => _bugCellGreen,
             _ => _bugCellGrey,
         };
@@ -860,39 +872,8 @@ public sealed partial class NotePage : UserControl
         };
     }
 
-    private FrameworkElement BuildBugLangHeader(string langKey, string sortKey, string groupLabel, bool firstInGroup, Brush stroke, Brush headerBg, Brush textFg, Windows.UI.Text.FontWeight bold)
+    private FrameworkElement BuildBugLangHeader(string langKey, string sortKey, Brush stroke, Brush headerBg, Brush textFg)
     {
-        var grid = new Grid();
-        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(25) });
-        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(24) });
-
-        if (firstInGroup)
-        {
-            var label = new Border
-            {
-                Background = headerBg,
-                BorderBrush = stroke,
-                BorderThickness = new Thickness(0, 0, 1, 0),
-                Width = 144,
-                Height = 25,
-                HorizontalAlignment = HorizontalAlignment.Left,
-                VerticalAlignment = VerticalAlignment.Top,
-                Child = new TextBlock
-                {
-                    Text = groupLabel,
-                    FontWeight = bold,
-                    Foreground = textFg,
-                    TextWrapping = TextWrapping.Wrap,
-                    MaxLines = 2,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                    TextAlignment = TextAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center,
-                },
-            };
-            Grid.SetRow(label, 0);
-            grid.Children.Add(label);
-        }
-
         var sp = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         var arrow = new TextBlock { FontSize = 9, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 2, 0) };
         _bugSortArrows[sortKey] = arrow;
@@ -912,7 +893,7 @@ public sealed partial class NotePage : UserControl
         sp.Children.Add(arrow);
         sp.Children.Add(btn);
 
-        var subHeader = new Border
+        return new Border
         {
             Background = headerBg,
             BorderBrush = stroke,
@@ -920,10 +901,99 @@ public sealed partial class NotePage : UserControl
             Padding = new Thickness(0),
             Child = sp,
         };
-        Grid.SetRow(subHeader, 1);
-        grid.Children.Add(subHeader);
+    }
 
+    private Grid BuildBugGroupHeaderRow()
+    {
+        var stroke = Application.Current.Resources["CardStrokeColorDefaultBrush"] as Brush
+            ?? new SolidColorBrush(Windows.UI.Color.FromArgb(0x33, 0, 0, 0));
+        var headerBg = Application.Current.Resources["SubtleFillColorSecondaryBrush"] as Brush
+            ?? new SolidColorBrush(Windows.UI.Color.FromArgb(0x0A, 0, 0, 0));
+        var textFg = Application.Current.Resources["TextFillColorPrimaryBrush"] as Brush
+            ?? new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0, 0, 0));
+        var bold = Microsoft.UI.Text.FontWeights.SemiBold;
+
+        var grid = new Grid { Height = 30, HorizontalAlignment = HorizontalAlignment.Left };
+        for (int c = 0; c < 3; c++)
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(_bugColumnWidths[c]) });
+        for (int g = 0; g < 4; g++)
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4 * _bugColumnWidths[3]) });
+
+        var leading = new Border
+        {
+            Background = headerBg,
+            BorderBrush = stroke,
+            BorderThickness = new Thickness(0, 0, 1, 1),
+        };
+        Grid.SetColumn(leading, 0);
+        Grid.SetColumnSpan(leading, 3);
+        grid.Children.Add(leading);
+
+        for (int g = 0; g < 4; g++)
+        {
+            var border = new Border
+            {
+                Background = headerBg,
+                BorderBrush = stroke,
+                BorderThickness = new Thickness(0, 0, 1, 1),
+                Child = new TextBlock
+                {
+                    Text = _bugGroupLabels[g],
+                    FontWeight = bold,
+                    Foreground = textFg,
+                    TextAlignment = TextAlignment.Center,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                },
+            };
+            Grid.SetColumn(border, 3 + g);
+            grid.Children.Add(border);
+            _bugGroupHeaderBorders[g] = border;
+        }
+
+        _bugGroupHeaderRow = grid;
         return grid;
+    }
+
+    private void ApplyBugGroupVisibility()
+    {
+        for (int g = 0; g < _bugGroupVisible.Length; g++)
+        {
+            var visible = _bugGroupVisible[g];
+
+            if (_bugGroupHeaderRow is not null && 3 + g < _bugGroupHeaderRow.ColumnDefinitions.Count)
+                _bugGroupHeaderRow.ColumnDefinitions[3 + g].Width =
+                    visible ? new GridLength(4 * _bugColumnWidths[3]) : new GridLength(0);
+
+            if (_bugGroupHeaderBorders[g] is Border b)
+                b.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private void RebuildBugTable()
+    {
+        if (_bugTableView is null || !BugTrackerSidebar.Children.Contains(_bugTableView))
+            return;
+
+        BugTrackerSidebar.Children.Remove(_bugTableView);
+        _bugTableView = BuildBugTableView();
+        Grid.SetRow(_bugTableView, 3);
+        BugTrackerSidebar.Children.Add(_bugTableView);
+        RebuildBugTrackerRows();
+    }
+
+    public string[] BugColumnGroups => _bugGroupLabels;
+
+    public bool GetBugColumnGroupVisible(int index) =>
+        index >= 0 && index < _bugGroupVisible.Length && _bugGroupVisible[index];
+
+    public void SetBugColumnGroupVisible(int index, bool visible)
+    {
+        if (index < 0 || index >= _bugGroupVisible.Length) return;
+        _bugGroupVisible[index] = visible;
+        ApplyBugGroupVisibility();
+        RebuildBugTable();
     }
 
     private void BuildFilterPopup(FrameworkElement target)
@@ -1374,7 +1444,6 @@ public sealed partial class NotePage : UserControl
         var vm = GetVm();
         if (vm is null) return;
         _selectedBugRow = row;
-        PopulateBugTrackerSidebar(vm);
         PopulateBugForm(row);
     }
 
@@ -1702,7 +1771,7 @@ public sealed partial class NotePage : UserControl
             note.ModifiedAt = DateTime.Now;
         }
 
-        PopulateBugTrackerSidebar(vm);
+        RebuildBugTrackerRows();
     }
 
     private void BuildBugForm()

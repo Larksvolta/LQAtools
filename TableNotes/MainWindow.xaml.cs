@@ -18,6 +18,7 @@ public sealed partial class MainWindow : Window
     private readonly TabView _tabView = new() { IsAddTabButtonVisible = false };
     private readonly NotePage[] _pages = new NotePage[4];
     private TeamLeadPage? _teamLeadPage;
+    private readonly MenuFlyoutSubItem _columnVisibilityItem = new() { Text = "Column Visibility" };
 
     public static MainWindow? Instance { get; private set; }
     public NotePage? TextFilesPage => _pages.FirstOrDefault(p => p.DataContext is NotePageViewModel vm && vm.PageName == "TextFiles");
@@ -94,6 +95,8 @@ public sealed partial class MainWindow : Window
         var viewMenu = new MenuBarItem { Title = "View" };
         viewMenu.Items.Add(new MenuFlyoutItem { Text = "Zoom In" });
         viewMenu.Items.Add(new MenuFlyoutItem { Text = "Zoom Out" });
+        viewMenu.Items.Add(new MenuFlyoutSeparator());
+        viewMenu.Items.Add(_columnVisibilityItem);
         menuBar.Items.Add(viewMenu);
 
         var accountButton = new Button
@@ -135,6 +138,7 @@ public sealed partial class MainWindow : Window
         }
 
         _ = ViewModel.LoadAllCommand.ExecuteAsync(null);
+        RefreshColumnVisibilityMenu();
     }
 
     private void OnTabSelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -144,7 +148,42 @@ public sealed partial class MainWindow : Window
             page.Visibility = ReferenceEquals(page, selectedTab) ? Visibility.Visible : Visibility.Collapsed;
         if (_teamLeadPage is not null)
             _teamLeadPage.Visibility = ReferenceEquals(_teamLeadPage, selectedTab) ? Visibility.Visible : Visibility.Collapsed;
+        RefreshColumnVisibilityMenu();
     }
+
+    private FrameworkElement? GetCurrentPage() => (_tabView.SelectedItem as TabViewItem)?.Tag as FrameworkElement;
+
+    private void RefreshColumnVisibilityMenu()
+    {
+        _columnVisibilityItem.Items.Clear();
+
+        var bugPage = _pages.FirstOrDefault(p => p.DataContext is NotePageViewModel vm && vm.PageName == "BugTracker");
+        if (bugPage is null || !ReferenceEquals(GetCurrentPage(), bugPage))
+        {
+            _columnVisibilityItem.Items.Add(new MenuFlyoutItem { Text = "Not available on this tab", IsEnabled = false });
+            return;
+        }
+
+        var groups = bugPage.BugColumnGroups;
+        for (int i = 0; i < groups.Length; i++)
+        {
+            var index = i;
+            var item = new MenuFlyoutItem
+            {
+                Text = groups[i],
+                Icon = bugPage.GetBugColumnGroupVisible(index) ? CheckIcon() : null,
+            };
+            item.Click += (_, _) =>
+            {
+                var visible = !bugPage.GetBugColumnGroupVisible(index);
+                bugPage.SetBugColumnGroupVisible(index, visible);
+                item.Icon = visible ? CheckIcon() : null;
+            };
+            _columnVisibilityItem.Items.Add(item);
+        }
+    }
+
+    private static FontIcon CheckIcon() => new() { Glyph = "\uE73E" };
 
     private NotePageViewModel? GetCurrentVm()
     {
