@@ -20,4 +20,8 @@
     <PackageReference Include="WinUI.TableView" Version="1.4.1" />
     <PackageReference Include="ClosedXML" Version="0.105.0" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TableNotes.Shared\TableNotes.Shared.csproj" />
+  </ItemGroup>
 </Project>

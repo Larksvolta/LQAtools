@@ -52,6 +52,21 @@ public class TableNote : INotifyPropertyChanged
 
     public string FileName { get; set; } = string.Empty;
 
+    private int _version = 1;
+    [JsonIgnore]
+    public int Version
+    {
+        get => _version;
+        set
+        {
+            if (_version != value)
+            {
+                _version = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
     private string _category = "General";
     public string Category
     {

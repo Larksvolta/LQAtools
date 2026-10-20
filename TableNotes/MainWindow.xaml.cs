@@ -3,6 +3,7 @@ using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using TableNotes.Services;
 using TableNotes.ViewModels;
 using TableNotes.Views;
 using Windows.Foundation;
@@ -193,18 +194,96 @@ public sealed partial class MainWindow : Window
 
     private async Task ShowSettingsDialog()
     {
+        var modeText = new TextBlock
+        {
+            Text = AppDataStores.IsRemote
+                ? $"Current mode: Shared server ({AppDataStores.ServerUrl})"
+                : "Current mode: Local files (standalone)",
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+        var serverBox = new TextBox
+        {
+            Header = "Server URL",
+            PlaceholderText = "e.g. http://localhost:5217",
+            Text = AppDataStores.ServerUrl ?? string.Empty,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        var hint = new TextBlock
+        {
+            Text = "Leave empty to use local files on this machine.",
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.7,
+        };
+
+        var panel = new StackPanel { Spacing = 10, MinWidth = 360 };
+        panel.Children.Add(modeText);
+        panel.Children.Add(serverBox);
+        panel.Children.Add(hint);
+
         var dialog = new ContentDialog
         {
             Title = "Settings",
-            Content = new StackPanel
-            {
-                Spacing = 8,
-                Children =
-                {
-                    new TextBlock { Text = "App settings will be available here.", TextWrapping = TextWrapping.Wrap },
-                },
-            },
-            CloseButtonText = "Close",
+            Content = panel,
+            PrimaryButtonText = "Save",
+            SecondaryButtonText = "Use Local",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = RootGrid.XamlRoot,
+        };
+
+        var result = await dialog.ShowAsync();
+
+        if (result == ContentDialogResult.Secondary)
+        {
+            AppDataStores.ServerUrl = null;
+            AppDataStores.SaveConfiguration();
+            await ReloadAfterSettingsChange();
+            return;
+        }
+
+        if (result != ContentDialogResult.Primary)
+            return;
+
+        var text = serverBox.Text.Trim();
+        if (text.Length > 0
+            && (!Uri.TryCreate(text, UriKind.Absolute, out var uri)
+                || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)))
+        {
+            await ShowMessageDialog("Invalid URL",
+                "Enter a full http(s) URL such as http://localhost:5217, or leave it empty for local mode.");
+            return;
+        }
+
+        AppDataStores.ServerUrl = text.Length == 0 ? null : text;
+        AppDataStores.SaveConfiguration();
+        await ReloadAfterSettingsChange();
+    }
+
+    private async Task ReloadAfterSettingsChange()
+    {
+        try
+        {
+            await ViewModel.ReloadAllAsync();
+            RefreshColumnVisibilityMenu();
+        }
+        catch (Exception ex)
+        {
+            await ShowMessageDialog("Could not load data",
+                AppDataStores.IsRemote
+                    ? $"Failed to reach the server: {ex.Message}"
+                    : $"Failed to load local data: {ex.Message}");
+        }
+    }
+
+    private async Task ShowMessageDialog(string title, string message)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
+            CloseButtonText = "OK",
             XamlRoot = RootGrid.XamlRoot,
         };
         await dialog.ShowAsync();

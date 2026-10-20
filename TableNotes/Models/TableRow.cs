@@ -5,6 +5,10 @@ namespace TableNotes.Models;
 
 public class TableRow : INotifyPropertyChanged
 {
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    public int Version { get; set; } = 1;
+
     private string _col1 = string.Empty;
     private string _col2 = string.Empty;
     private string _col3 = string.Empty;

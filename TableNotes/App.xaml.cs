@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using TableNotes.Services;
 
 namespace TableNotes;
 
@@ -11,6 +12,7 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        AppDataStores.LoadConfiguration();
         var mainWindow = new MainWindow();
         mainWindow.Activate();
     }

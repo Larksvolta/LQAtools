@@ -1,0 +1,20 @@
+## Build output
+bin/
+obj/
+
+## Server local runtime data (SQLite db + blobs)
+TableNotes.Server/Storage/tablenotes.db
+TableNotes.Server/Storage/tablenotes.db-shm
+TableNotes.Server/Storage/tablenotes.db-wal
+TableNotes.Server/Storage/blobs/
+
+## Client local config written at runtime
+server.txt
+
+## User settings
+*.user
+.vs/
+
+## OS
+Thumbs.db
+desktop.ini

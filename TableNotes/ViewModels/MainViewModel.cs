@@ -29,4 +29,13 @@ public partial class MainViewModel : ObservableObject
         await TextFilesVm.LoadNotesAsync();
         TeamLeadVm.Load();
     }
+
+    public async Task ReloadAllAsync()
+    {
+        await ChecklistVm.ReloadStoreAsync();
+        await BugTrackerVm.ReloadStoreAsync();
+        await ChangelogVm.ReloadStoreAsync();
+        await TextFilesVm.ReloadStoreAsync();
+        TeamLeadVm.Load();
+    }
 }

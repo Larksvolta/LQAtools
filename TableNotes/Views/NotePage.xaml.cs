@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using TableNotes.Models;
+using TableNotes.Services;
 using TableNotes.ViewModels;
 using Windows.ApplicationModel.DataTransfer;
 using Microsoft.UI.Xaml.Documents;
@@ -30,8 +31,8 @@ public sealed partial class NotePage : UserControl
     private readonly Dictionary<TableRow, HashSet<string>> _passedCells = new();
     private readonly Dictionary<TableRow, HashSet<string>> _yellowCells = new();
     private static readonly Dictionary<string, string> _savedMarkings = new();
-    private static readonly string _markingsPath = Path.Combine(
-        Services.DataPaths.BasePath, "cell_markings.json");
+    private IDataStore? _dataStore;
+    private readonly Dictionary<(string NoteFile, string BugId), HashSet<string>> _bugLanguagesWithShots = new();
     private readonly Dictionary<TableRow, HashSet<string>> _diffCells = new();
     private bool _diffVisualsPending;
     private bool _rowsCleared;
@@ -71,11 +72,6 @@ public sealed partial class NotePage : UserControl
     {
         ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff"
     };
-    private static readonly string _bugScreenshotsDir = Path.Combine(
-        Path.GetFullPath(Path.Combine(Services.DataPaths.BasePath, "..")),
-        "Screenshots");
-    private readonly Services.ScreenshotStore _screenshotStore =
-        new(Path.Combine(Services.DataPaths.BasePath, "BugTracker"));
 
     private string _bugSortColumn = "Col1";
     private bool _bugSortAscending = true;
@@ -124,32 +120,25 @@ public sealed partial class NotePage : UserControl
         ("ES", 11, 19, 20),
     };
 
-    static NotePage()
+    private async Task LoadMarkingsAsync(IDataStore store)
     {
         try
         {
-            if (File.Exists(_markingsPath))
-            {
-                var json = File.ReadAllText(_markingsPath);
-                var data = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
-                if (data is not null)
-                    foreach (var kvp in data)
-                        _savedMarkings[kvp.Key] = kvp.Value;
-            }
+            var loaded = await store.LoadCellMarkingsAsync();
+            foreach (var kvp in loaded)
+                _savedMarkings[kvp.Key] = kvp.Value;
         }
         catch { }
     }
 
-    private static void SaveMarkings()
+    private void SaveMarkings()
     {
-        try
-        {
-            var dir = Path.GetDirectoryName(_markingsPath);
-            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                Directory.CreateDirectory(dir);
-            File.WriteAllText(_markingsPath, JsonSerializer.Serialize(_savedMarkings));
-        }
-        catch { }
+        var store = _dataStore;
+        if (store is null)
+            return;
+
+        var snapshot = new Dictionary<string, string>(_savedMarkings);
+        _ = store.SaveCellMarkingsAsync(snapshot);
     }
 
     private sealed class TreeNoteItem
@@ -228,6 +217,58 @@ public sealed partial class NotePage : UserControl
 
     private NotePageViewModel? GetVm() => DataContext as NotePageViewModel;
 
+    private async Task HandleSaveConflictAsync(NotePageViewModel vm)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "Changes were made elsewhere",
+            Content = new TextBlock
+            {
+                Text = "This page was changed by someone else since you loaded it. "
+                     + "Reload the latest version?\n\nYour unsaved edits on this page will be discarded.",
+                TextWrapping = TextWrapping.Wrap,
+            },
+            PrimaryButtonText = "Reload",
+            CloseButtonText = "Keep mine",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot,
+        };
+
+        var result = await dialog.ShowAsync();
+        if (result != ContentDialogResult.Primary)
+            return;
+
+        await vm.ReloadSelectedRowsAsync();
+        RefreshAfterReload(vm);
+    }
+
+    private void RefreshAfterReload(NotePageViewModel vm)
+    {
+        if (vm.IsBugTracker)
+        {
+            RebuildBugTrackerRows();
+        }
+        else if (vm.IsChangelog)
+        {
+            ComputeDiff();
+        }
+    }
+
+    private async Task<bool> TrySaveRowsAsync(NotePageViewModel vm, TableNote note, IReadOnlyList<TableRow> rows)
+    {
+        try
+        {
+            await vm.DataStore.SaveRowsAsync(note, rows);
+            return true;
+        }
+        catch (ConcurrencyConflictException)
+        {
+            vm.SetStatusMessage("Conflict: this note was changed elsewhere.");
+            await HandleSaveConflictAsync(vm);
+            return false;
+        }
+    }
+
     private void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
     {
         if (args.NewValue is NotePageViewModel vm)
@@ -241,6 +282,9 @@ public sealed partial class NotePage : UserControl
             SetupSidebar(vm);
             SetupTableView(vm);
             RegisterMessenger(vm);
+
+            _dataStore = vm.DataStore;
+            _ = LoadMarkingsAsync(vm.DataStore);
         }
     }
 
@@ -249,6 +293,14 @@ public sealed partial class NotePage : UserControl
         WeakReferenceMessenger.Default.Unregister<EditSavedMessage>(this);
         WeakReferenceMessenger.Default.Unregister<RevertCellMessage>(this);
         WeakReferenceMessenger.Default.Unregister<SetChangelogPendingMessage>(this);
+        WeakReferenceMessenger.Default.Unregister<SaveConflictMessage>(this);
+
+        WeakReferenceMessenger.Default.Register<SaveConflictMessage>(this, async (r, m) =>
+        {
+            var vm = GetVm();
+            if (vm is null || vm.PageName != m.PageName) return;
+            await HandleSaveConflictAsync(vm);
+        });
 
         if (vm.PageName == "Checklist")
         {
@@ -271,7 +323,7 @@ public sealed partial class NotePage : UserControl
                 var checklistNote = checklistVm.Notes.FirstOrDefault(n => n.Id == m.NoteId);
                 if (checklistNote is null) return;
 
-                var noteRows = await checklistVm.ExcelService.LoadRowsAsync(checklistNote);
+                var noteRows = await checklistVm.DataStore.LoadRowsAsync(checklistNote);
                 if (m.RowIndex < 0 || m.RowIndex >= noteRows.Count) return;
                 var checklistRow = noteRows[m.RowIndex];
 
@@ -343,7 +395,7 @@ public sealed partial class NotePage : UserControl
                 }
                 else
                 {
-                    var rows = await changelogVm.ExcelService.LoadRowsAsync(note);
+                    var rows = await changelogVm.DataStore.LoadRowsAsync(note);
                     if (rows.Count > 0)
                     {
                         var newRow = rows[^1];
@@ -363,12 +415,12 @@ public sealed partial class NotePage : UserControl
                 var (changelogRow, changelogNote) = entry;
                 changelogRow.Col10 = "Pending";
 
-                var rows = await changelogVm.ExcelService.LoadRowsAsync(changelogNote);
+                var rows = await changelogVm.DataStore.LoadRowsAsync(changelogNote);
                 var found = rows.FirstOrDefault(row => row.Col1 == changelogRow.Col1);
                 if (found is not null)
                     found.Col10 = "Pending";
 
-                await changelogVm.ExcelService.SaveRowsAsync(changelogNote, rows);
+                await TrySaveRowsAsync(changelogVm, changelogNote, rows);
 
                 if (changelogVm.SelectedNote == changelogNote)
                 {
@@ -377,6 +429,19 @@ public sealed partial class NotePage : UserControl
                         changelogVm.Rows.Add(row2);
                 }
             });
+        }
+        else if (vm.PageName == "BugTracker")
+        {
+            vm.Rows.CollectionChanged += (_, args) =>
+            {
+                if (args.Action is NotifyCollectionChangedAction.Reset
+                    or NotifyCollectionChangedAction.Add)
+                {
+                    DispatcherQueue.TryEnqueue(
+                        Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                        () => _ = RefreshScreenshotIndexAndRebuildAsync(vm));
+                }
+            };
         }
     }
 
@@ -1213,13 +1278,6 @@ public sealed partial class NotePage : UserControl
 
     private StackPanel BuildScreenshotsSection()
     {
-        try
-        {
-            if (!Directory.Exists(_bugScreenshotsDir))
-                Directory.CreateDirectory(_bugScreenshotsDir);
-        }
-        catch { }
-
         var panel = new StackPanel { Spacing = 8, Margin = new Thickness(0, 8, 0, 0) };
 
         var label = new TextBlock { Text = "Screenshots", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold };
@@ -1236,7 +1294,7 @@ public sealed partial class NotePage : UserControl
         langGrid.Drop += OnLangGridDrop;
         panel.Children.Add(langGrid);
 
-        LoadScreenshotsForSelectedBug();
+        _ = LoadScreenshotsForSelectedBugAsync();
         UpdateLangScreenshotVisibility();
         return panel;
     }
@@ -1344,7 +1402,7 @@ public sealed partial class NotePage : UserControl
     private async Task HandleLangScreenshotDrop(string langKey, DragEventArgs e)
     {
         var vm = GetVm();
-        if (vm?.SelectedNote is null || _selectedBugRow is null) return;
+        if (vm?.SelectedNote is null || _selectedBugRow is null || _dataStore is null) return;
 
         try
         {
@@ -1354,33 +1412,64 @@ public sealed partial class NotePage : UserControl
                 if (item is not StorageFile file) continue;
                 if (!_imageExtensions.Contains(Path.GetExtension(file.Name))) continue;
 
-                var baseName = Path.GetFileNameWithoutExtension(file.Name);
-                var sanitized = string.Concat(baseName.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
-                if (string.IsNullOrEmpty(sanitized)) sanitized = "screenshot";
-                var name = $"{DateTime.Now:yyyyMMdd_HHmmss_fff}_{sanitized}{Path.GetExtension(file.Name)}";
-                var target = Path.Combine(_bugScreenshotsDir, name);
-                File.Copy(file.Path, target, overwrite: false);
-                _screenshotStore.AddScreenshot(vm.SelectedNote.FileName, _selectedBugRow.Col1, langKey, name);
-                _bugLangScreenshots[langKey].Add(target);
+                await _dataStore.AddScreenshotAsync(
+                    vm.SelectedNote, _selectedBugRow.Col1, langKey, file.Path);
             }
-            RefreshLangScreenshotPreviews(langKey);
+
+            await RefreshScreenshotIndexAsync(vm);
+            await LoadScreenshotsForSelectedBugAsync();
             RebuildBugTrackerRows();
         }
         catch { }
     }
 
-    private void LoadScreenshotsForSelectedBug()
+    private async Task RefreshScreenshotIndexAsync(NotePageViewModel vm)
+    {
+        if (_dataStore is null || vm.SelectedNote is null)
+            return;
+
+        var note = vm.SelectedNote;
+        foreach (var row in vm.Rows)
+        {
+            if (string.IsNullOrWhiteSpace(row.Col1))
+                continue;
+
+            var key = (note.FileName, row.Col1);
+            if (_bugLanguagesWithShots.ContainsKey(key))
+                continue;
+
+            try
+            {
+                var langs = await _dataStore.GetLanguagesWithScreenshotsAsync(note, row.Col1);
+                _bugLanguagesWithShots[key] = new HashSet<string>(langs, StringComparer.OrdinalIgnoreCase);
+            }
+            catch { }
+        }
+    }
+
+    private async Task RefreshScreenshotIndexAndRebuildAsync(NotePageViewModel vm)
+    {
+        await RefreshScreenshotIndexAsync(vm);
+        RebuildBugTrackerRows();
+    }
+
+    private async Task LoadScreenshotsForSelectedBugAsync()
     {
         foreach (var k in _langKeys)
             _bugLangScreenshots[k] = new List<string>();
 
         var vm = GetVm();
-        if (vm?.SelectedNote is not null && _selectedBugRow is not null)
+        if (_dataStore is not null && vm?.SelectedNote is not null && _selectedBugRow is not null)
         {
             foreach (var k in _langKeys)
             {
-                foreach (var fileName in _screenshotStore.GetScreenshots(vm.SelectedNote.FileName, _selectedBugRow.Col1, k))
-                    _bugLangScreenshots[k].Add(Path.Combine(_bugScreenshotsDir, fileName));
+                try
+                {
+                    foreach (var info in await _dataStore.GetScreenshotsAsync(
+                                 vm.SelectedNote, _selectedBugRow.Col1, k))
+                        _bugLangScreenshots[k].Add(info.LocalPath);
+                }
+                catch { }
             }
         }
         foreach (var k in _langKeys)
@@ -1652,7 +1741,10 @@ public sealed partial class NotePage : UserControl
             var vm = GetVm();
             if (vm?.SelectedNote is null)
                 return null;
-            var with = _screenshotStore.GetLanguagesWithScreenshots(vm.SelectedNote.FileName, row.Col1);
+            var key = (vm.SelectedNote.FileName, row.Col1);
+            var with = _bugLanguagesWithShots.TryGetValue(key, out var langs)
+                ? langs
+                : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             return with.Contains(langKey) ? "Ok" : "Missing";
         }
         if (row.Col23 != "Yes")
@@ -1712,7 +1804,7 @@ public sealed partial class NotePage : UserControl
             _bugFormNeedsLangSpecific!.IsChecked = false;
             UpdateLangResultVisibility();
             UpdateLangScreenshotVisibility();
-            LoadScreenshotsForSelectedBug();
+            _ = LoadScreenshotsForSelectedBugAsync();
             return;
         }
 
@@ -1741,7 +1833,7 @@ public sealed partial class NotePage : UserControl
         _bugFormNeedsLangSpecific!.IsChecked = row.Col23 == "Yes";
         UpdateLangResultVisibility();
         UpdateLangScreenshotVisibility();
-        LoadScreenshotsForSelectedBug();
+        _ = LoadScreenshotsForSelectedBugAsync();
     }
 
     private async Task SaveBugForm()
@@ -1775,8 +1867,8 @@ public sealed partial class NotePage : UserControl
         var note = vm.SelectedNote;
         if (note is not null)
         {
-            await vm.ExcelService.SaveRowsAsync(note, vm.Rows);
-            note.ModifiedAt = DateTime.Now;
+            if (await TrySaveRowsAsync(vm, note, vm.Rows))
+                note.ModifiedAt = DateTime.Now;
         }
 
         RebuildBugTrackerRows();
@@ -2508,7 +2600,7 @@ public sealed partial class NotePage : UserControl
         var textFilesNote = textFilesVm.Notes.FirstOrDefault(n => n.FileName == fileName);
         if (textFilesNote is null) return;
 
-        var rows = await textFilesVm.ExcelService.LoadRowsAsync(textFilesNote);
+        var rows = await textFilesVm.DataStore.LoadRowsAsync(textFilesNote);
         var targetRow = rows.FirstOrDefault(r => r.Col1 == stringId);
         if (targetRow is null) return;
 
@@ -2518,11 +2610,11 @@ public sealed partial class NotePage : UserControl
 
         dstProp.SetValue(targetRow, expectedResult);
 
-        await textFilesVm.ExcelService.SaveRowsAsync(textFilesNote, rows);
+        await TrySaveRowsAsync(textFilesVm, textFilesNote, rows);
 
         if (textFilesVm.SelectedNote == textFilesNote)
         {
-            var newRows = await textFilesVm.ExcelService.LoadRowsAsync(textFilesNote);
+            var newRows = await textFilesVm.DataStore.LoadRowsAsync(textFilesNote);
             textFilesVm.Rows.Clear();
             foreach (var r in newRows)
                 textFilesVm.Rows.Add(r);
@@ -2950,7 +3042,7 @@ public sealed partial class NotePage : UserControl
             var bugNote = bugVm.Notes.FirstOrDefault();
             if (bugNote is null) return;
 
-            var rows = await bugVm.ExcelService.LoadRowsAsync(bugNote);
+            var rows = await bugVm.DataStore.LoadRowsAsync(bugNote);
             var summary = summaryBox.Text;
             if (header is "French" or "Italian" or "German" or "Spanish")
             {
@@ -2975,7 +3067,7 @@ public sealed partial class NotePage : UserControl
                 case "Spanish": newRow.Col11 = "Affected"; break;
             }
             rows.Add(newRow);
-            await bugVm.ExcelService.SaveRowsAsync(bugNote, rows);
+            await TrySaveRowsAsync(bugVm, bugNote, rows);
 
             if (bugVm.SelectedNote == bugNote)
             {

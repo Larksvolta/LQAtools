@@ -22,11 +22,12 @@ public record EditSavedMessage(
 
 public record RevertCellMessage(Guid NoteId, int RowIndex, string ColumnProp, bool Reapply = false, string ExpectedResult = "");
 public record SetChangelogPendingMessage(Guid NoteId, int RowIndex, string ColumnProp);
+public record SaveConflictMessage(string PageName);
 
 public partial class NotePageViewModel : ObservableObject
 {
-    private readonly ExcelService _excelService;
-    public ExcelService ExcelService => _excelService;
+    private IDataStore _dataStore;
+    public IDataStore DataStore => _dataStore;
 
     public string PageName { get; }
 
@@ -66,10 +67,12 @@ public partial class NotePageViewModel : ObservableObject
     public bool HasStatusMessage => !string.IsNullOrEmpty(StatusMessage);
     public string SelectedNoteModifiedAt => SelectedNote?.ModifiedAt.ToString("g") ?? string.Empty;
 
+    public void SetStatusMessage(string message) => StatusMessage = message;
+
     public NotePageViewModel(string pageName)
     {
         PageName = pageName;
-        _excelService = new ExcelService(pageName);
+        _dataStore = AppDataStores.For(pageName);
     }
 
     partial void OnSelectedNoteChanged(TableNote? value)
@@ -83,170 +86,38 @@ public partial class NotePageViewModel : ObservableObject
 
     public async Task LoadNotesAsync()
     {
-        var notes = await _excelService.LoadIndexAsync();
-
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var deduped = new List<TableNote>();
-        foreach (var n in notes)
-        {
-            if (seen.Add(n.FileName))
-                deduped.Add(n);
-        }
+        var notes = await _dataStore.LoadNotesAsync();
 
         Notes.Clear();
-        foreach (var n in deduped.OrderByDescending(x => x.ModifiedAt))
+        foreach (var n in notes)
             Notes.Add(n);
-
-        await EnsurePlaceholdersAsync();
 
         if (Notes.Count > 0 && SelectedNote is null)
             SelectedNote = Notes[0];
     }
 
-    private static string MasterTextsDirectory => Path.Combine(
-        Services.DataPaths.BasePath, "MasterTexts");
-
-    private async Task<List<TableRow>> LoadRowsFromMasterAsync(string fileName)
-    {
-        var masterPath = Path.Combine(MasterTextsDirectory, fileName);
-        var rows = new List<TableRow>();
-
-        if (!File.Exists(masterPath))
-            return rows;
-
-        await Task.Run(() =>
-        {
-            using var workbook = new XLWorkbook(masterPath);
-            var ws = workbook.Worksheet(1);
-            foreach (var row in ws.RowsUsed().Skip(1))
-            {
-                rows.Add(new TableRow
-                {
-                    Col1 = row.Cell(1).GetString(),
-                    Col2 = row.Cell(2).GetString(),
-                    Col3 = string.Empty,
-                    Col4 = row.Cell(3).GetString(),
-                    Col5 = row.Cell(4).GetString(),
-                    Col6 = row.Cell(5).GetString(),
-                    Col7 = row.Cell(6).GetString(),
-                });
-            }
-        });
-
-        return rows;
-    }
-
-    private async Task EnsurePlaceholdersAsync()
-    {
-        if (PageName == "Changelog")
-        {
-            Notes.Clear();
-            foreach (var title in ChangelogNoteTitles)
-            {
-                var fileName = $"{title}.xlsx";
-                var note = new TableNote { Title = title, FileName = fileName };
-                Notes.Add(note);
-            }
-            SelectedNote = Notes[0];
-            await _excelService.SaveIndexAsync(Notes.ToList());
-            return;
-        }
-
-        if (PageName == "TextFiles")
-        {
-            var masterDir = MasterTextsDirectory;
-
-            if (!Directory.Exists(masterDir))
-                return;
-
-            var changed = false;
-            foreach (var file in Directory.GetFiles(masterDir, "*.xlsx"))
-            {
-                var fileName = Path.GetFileName(file);
-                var note = Notes.FirstOrDefault(n => n.FileName == fileName);
-                var targetPath = Path.Combine(_excelService.DataDirectory, fileName);
-
-                if (!File.Exists(targetPath))
-                {
-                    File.Copy(file, targetPath, overwrite: true);
-                }
-
-                if (note is null)
-                {
-                    note = new TableNote { Title = fileName, FileName = fileName };
-                    Notes.Add(note);
-                    changed = true;
-                }
-            }
-
-            if (changed)
-                await _excelService.SaveIndexAsync(Notes.ToList());
-
-            if (Notes.Count > 0)
-                SelectedNote = Notes[0];
-            return;
-        }
-
-        if (PageName == "BugTracker")
-        {
-            if (Notes.Count == 0)
-            {
-                var note = new TableNote { Title = "Bug Tracker", FileName = "BugTracker.xlsx" };
-                Notes.Add(note);
-                await _excelService.SaveIndexAsync(Notes.ToList());
-            }
-            SelectedNote = Notes[0];
-            return;
-        }
-
-        if (PageName != "Checklist")
-            return;
-
-        var changedChecklist = false;
-
-        foreach (var (title, fileName) in new[] { ("Dialogue", "Dialogue.xlsx"), ("UI", "UI.xlsx") })
-        {
-            var path = Path.Combine(_excelService.DataDirectory, fileName);
-            var note = Notes.FirstOrDefault(n => n.FileName == fileName);
-
-            if (!File.Exists(path))
-            {
-                var rows = await LoadRowsFromMasterAsync(fileName);
-                if (rows.Count == 0)
-                    continue;
-
-                var obsRows = new ObservableCollection<TableRow>(rows);
-
-                if (note is not null)
-                {
-                    await _excelService.SaveRowsAsync(note, obsRows);
-                }
-                else
-                {
-                    note = new TableNote { Title = title, FileName = fileName };
-                    await _excelService.SaveRowsAsync(note, obsRows);
-                    Notes.Add(note);
-                    changedChecklist = true;
-                }
-            }
-            else if (note is null)
-            {
-                note = new TableNote { Title = title, FileName = fileName };
-                Notes.Add(note);
-                changedChecklist = true;
-            }
-        }
-
-        if (changedChecklist)
-            await _excelService.SaveIndexAsync(Notes.ToList());
-    }
-
     private async Task LoadRowsAsync(TableNote note)
     {
         Rows.Clear();
-        var rows = await _excelService.LoadRowsAsync(note);
+        var rows = await _dataStore.LoadRowsAsync(note);
         foreach (var r in rows)
             Rows.Add(r);
+    }
+
+    public async Task ReloadSelectedRowsAsync()
+    {
+        if (SelectedNote is null)
+            return;
+        await LoadRowsAsync(SelectedNote);
+    }
+
+    public async Task ReloadStoreAsync()
+    {
+        _dataStore = AppDataStores.For(PageName);
+        SelectedNote = null;
+        Notes.Clear();
+        Rows.Clear();
+        await LoadNotesAsync();
     }
 
     public async Task AddChangelogEntry(string type, string description, string stringId, string source, string actualResult, string expectedResult, string columnProp)
@@ -255,12 +126,11 @@ public partial class NotePageViewModel : ObservableObject
         var note = Notes.FirstOrDefault(n => n.Title == noteTitle);
         if (note is null)
         {
-            note = new TableNote { Title = noteTitle, FileName = $"{noteTitle}.xlsx" };
+            note = await _dataStore.CreateNoteAsync(noteTitle);
             Notes.Insert(0, note);
-            await _excelService.SaveIndexAsync(Notes.ToList());
         }
 
-        var rows = await _excelService.LoadRowsAsync(note);
+        var rows = await _dataStore.LoadRowsAsync(note);
         var nextId = (rows.Count + 1).ToString();
         var row = new TableRow
         {
@@ -276,7 +146,16 @@ public partial class NotePageViewModel : ObservableObject
             Col10 = "Pending",
         };
         rows.Add(row);
-        await _excelService.SaveRowsAsync(note, rows);
+        try
+        {
+            await _dataStore.SaveRowsAsync(note, rows);
+        }
+        catch (ConcurrencyConflictException)
+        {
+            StatusMessage = "Conflict: this note was changed elsewhere.";
+            WeakReferenceMessenger.Default.Send(new SaveConflictMessage(PageName));
+            return;
+        }
 
         if (SelectedNote == note)
         {
@@ -286,22 +165,11 @@ public partial class NotePageViewModel : ObservableObject
         }
     }
 
-    private string GetUniqueFileName(string title)
-    {
-        var existing = Notes.Select(n => n.FileName).ToHashSet();
-        return ExcelService.GenerateFileName(title, existing);
-    }
-
     [RelayCommand]
-    private void NewNote()
+    private async Task NewNote()
     {
         if (PageName is "Changelog" or "TextFiles" or "BugTracker") return;
-        var note = new TableNote
-        {
-            Title = "New Note",
-            ModifiedAt = DateTime.Now,
-            FileName = GetUniqueFileName("New Note")
-        };
+        var note = await _dataStore.CreateNoteAsync("New Note");
         Notes.Insert(0, note);
         SelectedNote = note;
         Rows.Clear();
@@ -312,33 +180,27 @@ public partial class NotePageViewModel : ObservableObject
     [RelayCommand]
     private async Task SaveNote()
     {
-        if (SelectedNote is null)
+        try
         {
-            var note = new TableNote
+            if (SelectedNote is null)
             {
-                Title = EditTitle,
-                ModifiedAt = DateTime.Now,
-                FileName = GetUniqueFileName(EditTitle)
-            };
-            Notes.Insert(0, note);
-            SelectedNote = note;
-        }
-        else
-        {
-            var oldTitle = SelectedNote.Title;
-            SelectedNote.Title = EditTitle;
-            SelectedNote.ModifiedAt = DateTime.Now;
-
-            if (SelectedNote.Title != oldTitle)
-            {
-                var newFile = GetUniqueFileName(SelectedNote.Title);
-                _excelService.RenameFile(SelectedNote, newFile);
+                var note = await _dataStore.CreateNoteAsync(string.IsNullOrWhiteSpace(EditTitle) ? "New Note" : EditTitle);
+                Notes.Insert(0, note);
+                SelectedNote = note;
             }
-        }
+            else
+            {
+                await _dataStore.SaveNoteAsync(SelectedNote, EditTitle);
+            }
 
-        await _excelService.SaveRowsAsync(SelectedNote!, Rows);
-        await _excelService.SaveIndexAsync(Notes.ToList());
-        StatusMessage = "Note saved";
+            await _dataStore.SaveRowsAsync(SelectedNote!, Rows.ToList());
+            StatusMessage = "Note saved";
+        }
+        catch (ConcurrencyConflictException)
+        {
+            StatusMessage = "Conflict: this note was changed elsewhere.";
+            WeakReferenceMessenger.Default.Send(new SaveConflictMessage(PageName));
+        }
     }
 
     [RelayCommand]
@@ -354,8 +216,7 @@ public partial class NotePageViewModel : ObservableObject
         EditTitle = string.Empty;
         Rows.Clear();
         Notes.Remove(toRemove);
-        _excelService.DeleteFile(toRemove);
-        await _excelService.SaveIndexAsync(Notes.ToList());
+        await _dataStore.DeleteNoteAsync(toRemove);
 
         if (Notes.Count > 0)
         {
