@@ -26,6 +26,13 @@
             <Grid x:Name="ContentRoot" Padding="12,12,12,0">
                 <StackPanel x:Name="ProjectForm" Width="420" Spacing="8" HorizontalAlignment="Left">
                     <TextBlock Text="Projects" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Padding="10">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="Signed in" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <TextBlock Text="{Binding CurrentUser}" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding CurrentUserSource}" FontSize="12" Foreground="{ThemeResource TextFillColorDisabledBrush}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
                     <TextBox PlaceholderText="Project Name" Text="{Binding ProjectName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                     <TextBox PlaceholderText="Project Lead" Text="{Binding ProjectLead, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                     <ComboBox Header="Status" PlaceholderText="Select status" SelectedValue="{Binding ProjectStatus, Mode=TwoWay}" SelectedValuePath="Content">
@@ -39,6 +46,18 @@
 
                 <StackPanel x:Name="UsersForm" Width="420" Spacing="8" HorizontalAlignment="Left" Visibility="Collapsed">
                     <TextBlock Text="Users" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                    <TextBlock Text="Windows accounts" FontWeight="SemiBold"/>
+                    <ListView ItemsSource="{Binding WindowsUsers}" SelectionMode="None" MaxHeight="150">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxLines="1"/>
+                                    <TextBlock Text="{Binding Role}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock Text="{Binding Email}" FontSize="12" Foreground="{ThemeResource TextFillColorDisabledBrush}" TextTrimming="CharacterEllipsis" MaxLines="1"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
                     <TextBox PlaceholderText="User Name" Text="{Binding UserName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                     <TextBox PlaceholderText="Role" Text="{Binding UserRole, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                     <TextBox PlaceholderText="Email" Text="{Binding UserEmail, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>

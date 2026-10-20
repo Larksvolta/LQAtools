@@ -27,7 +27,7 @@ public partial class MainViewModel : ObservableObject
         await BugTrackerVm.LoadNotesAsync();
         await ChangelogVm.LoadNotesAsync();
         await TextFilesVm.LoadNotesAsync();
-        TeamLeadVm.Load();
+        await TeamLeadVm.LoadAsync();
     }
 
     public async Task ReloadAllAsync()
@@ -36,6 +36,6 @@ public partial class MainViewModel : ObservableObject
         await BugTrackerVm.ReloadStoreAsync();
         await ChangelogVm.ReloadStoreAsync();
         await TextFilesVm.ReloadStoreAsync();
-        TeamLeadVm.Load();
+        await TeamLeadVm.LoadAsync();
     }
 }

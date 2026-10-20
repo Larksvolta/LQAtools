@@ -23,6 +23,21 @@ public sealed class NoteDto
     public DateTimeOffset ModifiedAt { get; set; }
     public int Version { get; set; }
     public bool IsPlaceholder { get; set; }
+    public string? CreatedBy { get; set; }
+    public string? LastModifiedBy { get; set; }
+}
+
+public sealed class UserDto
+{
+    public string Name { get; set; } = string.Empty;
+    public DateTimeOffset FirstSeenAt { get; set; }
+    public DateTimeOffset LastSeenAt { get; set; }
+}
+
+public sealed class MeResponse
+{
+    public string? Name { get; set; }
+    public bool Authenticated { get; set; }
 }
 
 public sealed class RowDto

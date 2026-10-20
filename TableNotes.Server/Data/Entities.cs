@@ -10,6 +10,15 @@ public sealed class Note
     public DateTime ModifiedAtUtc { get; set; } = DateTime.UtcNow;
     public int Version { get; set; } = 1;
     public bool IsPlaceholder { get; set; }
+    public string? CreatedBy { get; set; }
+    public string? LastModifiedBy { get; set; }
+}
+
+public sealed class AppUser
+{
+    public string Name { get; set; } = string.Empty;
+    public DateTime FirstSeenAtUtc { get; set; } = DateTime.UtcNow;
+    public DateTime LastSeenAtUtc { get; set; } = DateTime.UtcNow;
 }
 
 public interface INoteRow

@@ -13,6 +13,7 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
 connectionString = ResolveSqlitePath(connectionString, contentRoot);
 
 builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlite(connectionString));
+builder.Services.AddTableNotesAuth(builder.Configuration);
 builder.Services.AddScoped<LocalDataImporter>();
 builder.Services.AddSingleton<IBlobStore>(_ =>
 {
@@ -32,6 +33,9 @@ using (var scope = app.Services.CreateScope())
     db.Database.EnsureCreated();
 }
 
+app.UseTableNotesAuth();
+
+app.MapAuthApi();
 app.MapNotesApi();
 app.MapRowsApi();
 app.MapCellMarkingApi();

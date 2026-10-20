@@ -283,4 +283,10 @@ public sealed class LocalDataStore : IDataStore
 
         return Task.CompletedTask;
     }
+
+    public Task<string?> GetCurrentUserAsync() =>
+        Task.FromResult<string?>(Environment.UserName);
+
+    public Task<List<UserInfo>> GetKnownUsersAsync() =>
+        Task.FromResult(new List<UserInfo>());
 }

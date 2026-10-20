@@ -7,6 +7,7 @@ public sealed class AppDbContext : DbContext
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
     public DbSet<Note> Notes => Set<Note>();
+    public DbSet<AppUser> Users => Set<AppUser>();
     public DbSet<ChecklistRow> ChecklistRows => Set<ChecklistRow>();
     public DbSet<TextFilesRow> TextFilesRows => Set<TextFilesRow>();
     public DbSet<ChangelogRow> ChangelogRows => Set<ChangelogRow>();
@@ -23,7 +24,15 @@ public sealed class AppDbContext : DbContext
             e.Property(x => x.Title).IsRequired().HasMaxLength(512);
             e.Property(x => x.Category).IsRequired().HasMaxLength(128);
             e.Property(x => x.Version).IsConcurrencyToken();
+            e.Property(x => x.CreatedBy).HasMaxLength(256);
+            e.Property(x => x.LastModifiedBy).HasMaxLength(256);
             e.HasIndex(x => new { x.PageName, x.ModifiedAtUtc });
+        });
+
+        b.Entity<AppUser>(e =>
+        {
+            e.HasKey(x => x.Name);
+            e.Property(x => x.Name).HasMaxLength(256);
         });
 
         ConfigureRows<ChecklistRow>(b.Entity<ChecklistRow>());

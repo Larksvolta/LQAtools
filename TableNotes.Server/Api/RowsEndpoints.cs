@@ -22,7 +22,7 @@ public static class RowsEndpoints
             });
         });
 
-        app.MapPut("/api/notes/{id:guid}/rows", async (Guid id, SaveRowsRequest req, AppDbContext db) =>
+        app.MapPut("/api/notes/{id:guid}/rows", async (Guid id, SaveRowsRequest req, AppDbContext db, HttpContext context) =>
         {
             var note = await db.Notes.FirstOrDefaultAsync(n => n.Id == id);
             if (note is null)
@@ -52,6 +52,7 @@ public static class RowsEndpoints
             db.Entry(note).Property(n => n.Version).OriginalValue = req.BaseVersion;
             note.Version = req.BaseVersion + 1;
             note.ModifiedAtUtc = DateTime.UtcNow;
+            note.LastModifiedBy = context.User?.Identity?.Name;
 
             try
             {

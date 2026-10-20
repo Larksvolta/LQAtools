@@ -17,7 +17,12 @@ public sealed class RemoteDataStore : IDataStore
     public RemoteDataStore(string pageName, string baseUrl)
     {
         PageName = pageName;
-        _http = new HttpClient { BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/") };
+        var handler = new HttpClientHandler
+        {
+            UseDefaultCredentials = true,
+            PreAuthenticate = true
+        };
+        _http = new HttpClient(handler) { BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/") };
         _cacheDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "TableNotes", "ScreenshotsCache");
@@ -190,6 +195,18 @@ public sealed class RemoteDataStore : IDataStore
 
         await File.WriteAllBytesAsync(path, bytes);
         return path;
+    }
+
+    public async Task<string?> GetCurrentUserAsync()
+    {
+        var me = await _http.GetFromJsonAsync<MeResponse>("api/me");
+        return me?.Authenticated == true ? me.Name : null;
+    }
+
+    public async Task<List<UserInfo>> GetKnownUsersAsync()
+    {
+        var dtos = await _http.GetFromJsonAsync<List<UserDto>>("api/users") ?? new List<UserDto>();
+        return dtos.Select(d => new UserInfo(d.Name, d.FirstSeenAt, d.LastSeenAt)).ToList();
     }
 
     private static TableNote ToNote(NoteDto dto) => new()

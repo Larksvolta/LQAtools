@@ -4,6 +4,8 @@ namespace TableNotes.Services;
 
 public sealed record ScreenshotInfo(string Language, string FileName, string LocalPath);
 
+public sealed record UserInfo(string Name, DateTimeOffset FirstSeenAt, DateTimeOffset LastSeenAt);
+
 public interface IDataStore
 {
     string PageName { get; }
@@ -29,4 +31,8 @@ public interface IDataStore
     Task<List<string>> GetLanguagesWithScreenshotsAsync(TableNote note, string bugId);
 
     Task AddScreenshotAsync(TableNote note, string bugId, string language, string sourceFilePath);
+
+    Task<string?> GetCurrentUserAsync();
+
+    Task<List<UserInfo>> GetKnownUsersAsync();
 }

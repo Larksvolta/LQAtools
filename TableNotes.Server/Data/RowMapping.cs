@@ -111,7 +111,9 @@ public static class NoteMapping
         CreatedAt = AsOffset(n.CreatedAtUtc),
         ModifiedAt = AsOffset(n.ModifiedAtUtc),
         Version = n.Version,
-        IsPlaceholder = n.IsPlaceholder
+        IsPlaceholder = n.IsPlaceholder,
+        CreatedBy = n.CreatedBy,
+        LastModifiedBy = n.LastModifiedBy
     };
 
     private static DateTimeOffset AsOffset(DateTime utc) =>

@@ -11,6 +11,13 @@ public partial class TeamLeadViewModel : ObservableObject
     public static readonly string[] ProjectStatuses = ["Planned", "In Progress", "Done"];
 
     public ObservableCollection<TeamLeadUser> Users { get; } = new();
+    public ObservableCollection<TeamLeadUser> WindowsUsers { get; } = new();
+
+    [ObservableProperty]
+    private string _currentUser = string.Empty;
+
+    [ObservableProperty]
+    private string _currentUserSource = string.Empty;
 
     [ObservableProperty]
     private string _projectName = string.Empty;
@@ -39,15 +46,43 @@ public partial class TeamLeadViewModel : ObservableObject
 
     public bool HasStatusMessage => !string.IsNullOrEmpty(StatusMessage);
 
-    public void Load()
+    public async Task LoadAsync()
     {
         var project = TeamLeadStore.LoadProject();
         ProjectName = project.Name;
         ProjectLead = project.Lead;
         ProjectStatus = project.Status;
 
+        Users.Clear();
         foreach (var user in TeamLeadStore.LoadUsers())
             Users.Add(user);
+
+        WindowsUsers.Clear();
+        try
+        {
+            var store = AppDataStores.For("Checklist");
+            var name = await store.GetCurrentUserAsync();
+
+            CurrentUser = string.IsNullOrWhiteSpace(name)
+                ? Environment.UserName
+                : UserNames.Friendly(name);
+            CurrentUserSource = AppDataStores.IsRemote
+                ? $"Windows account \u00b7 {AppDataStores.ServerUrl}"
+                : "Local account on this machine";
+
+            foreach (var u in await store.GetKnownUsersAsync())
+                WindowsUsers.Add(new TeamLeadUser
+                {
+                    Name = UserNames.Friendly(u.Name),
+                    Role = "Windows account",
+                    Email = u.LastSeenAt.LocalDateTime.ToString("g"),
+                });
+        }
+        catch
+        {
+            CurrentUser = UserNames.Friendly(Environment.UserName);
+            CurrentUserSource = "Local account on this machine";
+        }
     }
 
     [RelayCommand]

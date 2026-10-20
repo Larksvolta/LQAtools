@@ -20,6 +20,8 @@ public sealed partial class MainWindow : Window
     private readonly NotePage[] _pages = new NotePage[4];
     private TeamLeadPage? _teamLeadPage;
     private readonly MenuFlyoutSubItem _columnVisibilityItem = new() { Text = "Column Visibility" };
+    private readonly MenuFlyoutItem _userItem = new() { IsEnabled = false };
+    private readonly MenuFlyoutItem _modeItem = new() { IsEnabled = false };
 
     public static MainWindow? Instance { get; private set; }
     public NotePage? TextFilesPage => _pages.FirstOrDefault(p => p.DataContext is NotePageViewModel vm && vm.PageName == "TextFiles");
@@ -108,9 +110,13 @@ public sealed partial class MainWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
         };
         var accountMenu = new MenuFlyout();
+        accountMenu.Items.Add(_userItem);
+        accountMenu.Items.Add(_modeItem);
+        accountMenu.Items.Add(new MenuFlyoutSeparator());
         var settingsItem = new MenuFlyoutItem { Text = "Settings" };
         settingsItem.Click += async (_, _) => await ShowSettingsDialog();
         accountMenu.Items.Add(settingsItem);
+        accountMenu.Opening += async (_, _) => await RefreshIdentityAsync();
         accountButton.Flyout = accountMenu;
 
         var topRow = new Grid();
@@ -140,6 +146,27 @@ public sealed partial class MainWindow : Window
 
         _ = ViewModel.LoadAllCommand.ExecuteAsync(null);
         RefreshColumnVisibilityMenu();
+        _ = RefreshIdentityAsync();
+    }
+
+    private async Task RefreshIdentityAsync()
+    {
+        try
+        {
+            var store = AppDataStores.For("Checklist");
+            var name = await store.GetCurrentUserAsync();
+            _userItem.Text = string.IsNullOrWhiteSpace(name)
+                ? $"Signed in: {UserNames.Friendly(Environment.UserName)}"
+                : $"Signed in: {UserNames.Friendly(name)}";
+            _modeItem.Text = AppDataStores.IsRemote
+                ? $"Server: {AppDataStores.ServerUrl}"
+                : "Mode: local files";
+        }
+        catch
+        {
+            _userItem.Text = $"Signed in: {UserNames.Friendly(Environment.UserName)}";
+            _modeItem.Text = "Mode: server unreachable";
+        }
     }
 
     private void OnTabSelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -267,6 +294,7 @@ public sealed partial class MainWindow : Window
         {
             await ViewModel.ReloadAllAsync();
             RefreshColumnVisibilityMenu();
+            await RefreshIdentityAsync();
         }
         catch (Exception ex)
         {

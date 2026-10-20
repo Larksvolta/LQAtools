@@ -8,7 +8,8 @@ public static class NotesEndpoints
 {
     public static void MapNotesApi(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/health", () => Results.Ok(new { status = "ok", utc = DateTime.UtcNow }));
+        app.MapGet("/api/health", () => Results.Ok(new { status = "ok", utc = DateTime.UtcNow }))
+            .AllowAnonymous();
 
         app.MapGet("/api/pages/{page}/notes", async (string page, AppDbContext db) =>
         {
@@ -29,7 +30,7 @@ public static class NotesEndpoints
             return note is null ? Results.NotFound() : Results.Ok(NoteMapping.ToDto(note));
         });
 
-        app.MapPost("/api/pages/{page}/notes", async (string page, CreateNoteRequest req, AppDbContext db) =>
+        app.MapPost("/api/pages/{page}/notes", async (string page, CreateNoteRequest req, AppDbContext db, HttpContext context) =>
         {
             if (!PageNames.IsValid(page))
                 return Results.BadRequest(new { error = $"Unknown page '{page}'." });
@@ -38,6 +39,7 @@ public static class NotesEndpoints
             if (title.Length == 0)
                 return Results.BadRequest(new { error = "Title is required." });
 
+            var user = context.User?.Identity?.Name;
             var now = DateTime.UtcNow;
             var note = new Note
             {
@@ -46,7 +48,9 @@ public static class NotesEndpoints
                 Category = string.IsNullOrWhiteSpace(req.Category) ? "General" : req.Category.Trim(),
                 CreatedAtUtc = now,
                 ModifiedAtUtc = now,
-                Version = 1
+                Version = 1,
+                CreatedBy = user,
+                LastModifiedBy = user
             };
 
             db.Notes.Add(note);
@@ -54,7 +58,7 @@ public static class NotesEndpoints
             return Results.Created($"/api/notes/{note.Id}", NoteMapping.ToDto(note));
         });
 
-        app.MapPut("/api/notes/{id:guid}", async (Guid id, UpdateNoteRequest req, AppDbContext db) =>
+        app.MapPut("/api/notes/{id:guid}", async (Guid id, UpdateNoteRequest req, AppDbContext db, HttpContext context) =>
         {
             var note = await db.Notes.FirstOrDefaultAsync(n => n.Id == id);
             if (note is null)
@@ -71,6 +75,7 @@ public static class NotesEndpoints
             note.Title = title;
             note.Category = string.IsNullOrWhiteSpace(req.Category) ? note.Category : req.Category.Trim();
             note.ModifiedAtUtc = DateTime.UtcNow;
+            note.LastModifiedBy = context.User?.Identity?.Name;
             note.Version = req.BaseVersion + 1;
 
             try
