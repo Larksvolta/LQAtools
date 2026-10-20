@@ -23,6 +23,11 @@ public sealed class RemoteDataStore : IDataStore
             PreAuthenticate = true
         };
         _http = new HttpClient(handler) { BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/") };
+
+        var overrideUser = Environment.GetEnvironmentVariable("TABLENOTES_USER");
+        if (!string.IsNullOrWhiteSpace(overrideUser))
+            _http.DefaultRequestHeaders.Add("X-TableNotes-User", overrideUser.Trim());
+
         _cacheDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "TableNotes", "ScreenshotsCache");

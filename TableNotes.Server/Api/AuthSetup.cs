@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.Authorization;
 using TableNotes.Server.Data;
@@ -6,8 +7,13 @@ namespace TableNotes.Server.Api;
 
 public static class AuthSetup
 {
+    public const string UserOverrideHeader = "X-TableNotes-User";
+
     public static bool IsEnabled(IConfiguration config) =>
         config.GetValue("Auth:Enabled", true);
+
+    public static bool IsUserOverrideEnabled(IConfiguration config) =>
+        config.GetValue("Auth:AllowUserOverride", false);
 
     public static void AddTableNotesAuth(this IServiceCollection services, IConfiguration config)
     {
@@ -29,10 +35,41 @@ public static class AuthSetup
     public static void UseTableNotesAuth(this WebApplication app)
     {
         app.UseAuthentication();
+
+        if (IsUserOverrideEnabled(app.Configuration))
+            app.UseMiddleware<UserOverrideMiddleware>();
+
         app.UseAuthorization();
 
         if (IsEnabled(app.Configuration))
             app.UseMiddleware<UserActivityMiddleware>();
+    }
+}
+
+public sealed class UserOverrideMiddleware
+{
+    private readonly RequestDelegate _next;
+    public UserOverrideMiddleware(RequestDelegate next) => _next = next;
+
+    public async Task InvokeAsync(HttpContext context)
+    {
+        var remote = context.Connection.RemoteIpAddress;
+        var isLoopback = remote is not null && System.Net.IPAddress.IsLoopback(remote);
+
+        if (isLoopback
+            && context.Request.Headers.TryGetValue(AuthSetup.UserOverrideHeader, out var values))
+        {
+            var name = values.ToString().Trim();
+            if (name.Length > 0)
+            {
+                var identity = new ClaimsIdentity(
+                    new[] { new Claim(ClaimTypes.Name, name) },
+                    authenticationType: "DevOverride");
+                context.User = new ClaimsPrincipal(identity);
+            }
+        }
+
+        await _next(context);
     }
 }
 
