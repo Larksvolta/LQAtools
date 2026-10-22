@@ -17,12 +17,14 @@ public sealed class RemoteDataStore : IDataStore
     public RemoteDataStore(string pageName, string baseUrl)
     {
         PageName = pageName;
+        var baseUri = AppDataStores.ResolveUri(baseUrl);
         var handler = new HttpClientHandler
         {
             UseDefaultCredentials = true,
-            PreAuthenticate = true
+            PreAuthenticate = true,
+            AllowAutoRedirect = false
         };
-        _http = new HttpClient(handler) { BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/") };
+        _http = new HttpClient(handler) { BaseAddress = new Uri(baseUri.ToString().TrimEnd('/') + "/") };
 
         var overrideUser = Environment.GetEnvironmentVariable("TABLENOTES_USER");
         if (!string.IsNullOrWhiteSpace(overrideUser))
@@ -185,9 +187,12 @@ public sealed class RemoteDataStore : IDataStore
 
     private async Task<string?> DownloadAsync(ScreenshotDto dto)
     {
+        if (dto.ContentHash.Length != 64 || !dto.ContentHash.All(Uri.IsHexDigit))
+            return null;
+
         Directory.CreateDirectory(_cacheDir);
-        var ext = Path.GetExtension(dto.FileName);
-        if (string.IsNullOrEmpty(ext))
+        var ext = Path.GetExtension(dto.FileName).ToLowerInvariant();
+        if (ext is not ".png" and not ".jpg" and not ".jpeg" and not ".gif" and not ".bmp" and not ".webp")
             ext = ".png";
         var path = Path.Combine(_cacheDir, dto.ContentHash + ext);
         if (File.Exists(path))

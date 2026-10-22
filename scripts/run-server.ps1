@@ -20,6 +20,15 @@
 .PARAMETER AllowUserOverride
     Enable the dev-only X-TableNotes-User identity override (loopback only).
 
+.PARAMETER AllowedGroup
+    Optional Windows/AD group name. When set, only members of that group may use
+    the server. The group is resolved (and must resolve) at startup.
+
+.PARAMETER AllowInsecureRemote
+    Allow plain-HTTP connections from non-local clients. Off by default: remote
+    clients must use https://, otherwise Windows credentials would travel in the
+    clear. Enable only on a trusted isolated network.
+
 .PARAMETER Configuration
     Build configuration. Default: Debug
 
@@ -36,6 +45,8 @@
 param(
     [string]$Url = "http://localhost:5217",
     [switch]$AllowUserOverride,
+    [string]$AllowedGroup,
+    [switch]$AllowInsecureRemote,
     [string]$Configuration = "Debug",
     [switch]$NoBuild
 )
@@ -49,10 +60,18 @@ if (-not (Test-Path -LiteralPath $project)) {
 }
 
 $env:Auth__AllowUserOverride = if ($AllowUserOverride) { "true" } else { $null }
+$env:Auth__AllowedGroup = if ($AllowedGroup) { $AllowedGroup } else { $null }
+$env:Security__AllowInsecureRemote = if ($AllowInsecureRemote) { "true" } else { $null }
 if ($AllowUserOverride) {
     Write-Host "Identity override ENABLED (loopback callers may set X-TableNotes-User)." -ForegroundColor Yellow
 } else {
     Write-Host "Strict Windows auth: anonymous API calls are rejected (401)." -ForegroundColor DarkGray
+}
+if ($AllowedGroup) {
+    Write-Host "Only members of Windows group '$AllowedGroup' may use the server." -ForegroundColor Cyan
+}
+if ($AllowInsecureRemote) {
+    Write-Host "Plain HTTP allowed from remote clients (credentials are NOT protected)." -ForegroundColor Red
 }
 
 $runArgs = @("run", "--project", $project, "-c", $Configuration, "--urls", $Url)

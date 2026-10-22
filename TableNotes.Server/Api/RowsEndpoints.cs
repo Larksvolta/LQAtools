@@ -6,6 +6,9 @@ namespace TableNotes.Server.Api;
 
 public static class RowsEndpoints
 {
+    private const int MaxRows = 20000;
+    private const int MaxCellLength = 32767;
+
     public static void MapRowsApi(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/notes/{id:guid}/rows", async (Guid id, AppDbContext db) =>
@@ -35,9 +38,13 @@ public static class RowsEndpoints
                 return Results.Conflict(new RowsResponse { Version = note.Version });
 
             var rowsRequest = req.Rows ?? new List<RowDto>();
+            if (rowsRequest.Count > MaxRows)
+                return Results.BadRequest(new { error = $"A note can hold at most {MaxRows} rows." });
             if (rowsRequest.Select(r => r.Id).Where(x => x != Guid.Empty).Distinct().Count()
                 != rowsRequest.Select(r => r.Id).Where(x => x != Guid.Empty).Count())
                 return Results.BadRequest(new { error = "Duplicate row ids." });
+            if (rowsRequest.Any(HasOversizedCell))
+                return Results.BadRequest(new { error = $"Cell values must be at most {MaxCellLength} characters." });
 
             await using var tx = await db.Database.BeginTransactionAsync();
 
@@ -74,6 +81,21 @@ public static class RowsEndpoints
                 Rows = saved.Select(r => RowMapping.ToDto(note.PageName, r)).ToList()
             });
         });
+    }
+
+    private static bool HasOversizedCell(RowDto? row)
+    {
+        if (row is null)
+            return true;
+
+        return TooLong(row.Col1) || TooLong(row.Col2) || TooLong(row.Col3) || TooLong(row.Col4)
+            || TooLong(row.Col5) || TooLong(row.Col6) || TooLong(row.Col7) || TooLong(row.Col8)
+            || TooLong(row.Col9) || TooLong(row.Col10) || TooLong(row.Col11) || TooLong(row.Col12)
+            || TooLong(row.Col13) || TooLong(row.Col14) || TooLong(row.Col15) || TooLong(row.Col16)
+            || TooLong(row.Col17) || TooLong(row.Col18) || TooLong(row.Col19) || TooLong(row.Col20)
+            || TooLong(row.Col21) || TooLong(row.Col22) || TooLong(row.Col23);
+
+        static bool TooLong(string? value) => value is not null && value.Length > MaxCellLength;
     }
 
     private static async Task<List<INoteRow>> LoadRowsAsync(AppDbContext db, Note note) => note.PageName switch

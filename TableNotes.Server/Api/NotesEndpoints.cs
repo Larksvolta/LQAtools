@@ -6,6 +6,9 @@ namespace TableNotes.Server.Api;
 
 public static class NotesEndpoints
 {
+    private const int MaxTitleLength = 200;
+    private const int MaxCategoryLength = 100;
+
     public static void MapNotesApi(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/health", () => Results.Ok(new { status = "ok", utc = DateTime.UtcNow }))
@@ -38,6 +41,10 @@ public static class NotesEndpoints
             var title = (req.Title ?? string.Empty).Trim();
             if (title.Length == 0)
                 return Results.BadRequest(new { error = "Title is required." });
+            if (title.Length > MaxTitleLength)
+                return Results.BadRequest(new { error = $"Title must be at most {MaxTitleLength} characters." });
+            if (!string.IsNullOrWhiteSpace(req.Category) && req.Category.Trim().Length > MaxCategoryLength)
+                return Results.BadRequest(new { error = $"Category must be at most {MaxCategoryLength} characters." });
 
             var user = context.User?.Identity?.Name;
             var now = DateTime.UtcNow;
@@ -67,6 +74,10 @@ public static class NotesEndpoints
             var title = (req.Title ?? string.Empty).Trim();
             if (title.Length == 0)
                 return Results.BadRequest(new { error = "Title is required." });
+            if (title.Length > MaxTitleLength)
+                return Results.BadRequest(new { error = $"Title must be at most {MaxTitleLength} characters." });
+            if (!string.IsNullOrWhiteSpace(req.Category) && req.Category.Trim().Length > MaxCategoryLength)
+                return Results.BadRequest(new { error = $"Category must be at most {MaxCategoryLength} characters." });
 
             if (note.Version != req.BaseVersion)
                 return Results.Conflict(new { note.Version });

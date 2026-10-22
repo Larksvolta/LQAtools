@@ -25,7 +25,7 @@ builder.Services.AddSingleton<IBlobStore>(_ =>
     return new LocalBlobStore(root);
 });
 
-builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = 200L * 1024 * 1024);
+builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = 64L * 1024 * 1024);
 
 var app = builder.Build();
 
@@ -35,6 +35,7 @@ using (var scope = app.Services.CreateScope())
     db.Database.EnsureCreated();
 }
 
+app.UseTableNotesHardening();
 app.UseTableNotesAuth();
 
 app.MapAuthApi();

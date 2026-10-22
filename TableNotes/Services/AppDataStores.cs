@@ -12,6 +12,26 @@ internal static class AppDataStores
 
     public static bool IsRemote => _serverUrl is not null;
 
+    public static Uri ResolveUri(string baseUrl)
+    {
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new InvalidOperationException(
+                $"'{baseUrl}' is not a valid server URL. Use a full http(s) URL such as https://tablenotes.example.com.");
+        }
+
+        if (uri.Scheme == Uri.UriSchemeHttp && !uri.IsLoopback
+            && Environment.GetEnvironmentVariable("TABLENOTES_ALLOW_INSECURE") != "1")
+        {
+            throw new InvalidOperationException(
+                "Refusing to send Windows credentials to a non-local server over plain HTTP. " +
+                "Use an https:// URL, or set TABLENOTES_ALLOW_INSECURE=1 only on a trusted network.");
+        }
+
+        return uri;
+    }
+
     public static IDataStore For(string pageName) =>
         IsRemote
             ? new RemoteDataStore(pageName, _serverUrl!)

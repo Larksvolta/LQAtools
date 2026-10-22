@@ -25,6 +25,15 @@ public sealed class PresenceClient : IAsyncDisposable
 
     public async Task StartAsync(string baseUrl, string? noteId)
     {
+        try
+        {
+            AppDataStores.ResolveUri(baseUrl);
+        }
+        catch
+        {
+            return;
+        }
+
         _baseUrl = baseUrl.TrimEnd('/');
         _noteId = noteId ?? "";
 
@@ -37,8 +46,12 @@ public sealed class PresenceClient : IAsyncDisposable
 
     public async Task SwitchNoteAsync(string? noteId)
     {
-        _noteId = noteId ?? "";
+        var previous = _last;
+        if (previous is not null)
+            await SendAsync(previous, active: false);
         _last = null;
+
+        _noteId = noteId ?? "";
 
         if (_connection is null)
         {
@@ -46,8 +59,18 @@ public sealed class PresenceClient : IAsyncDisposable
             return;
         }
 
-        await SendAsync(_last is null ? null : _last, active: false);
-        _last = null;
+        if (_connection.State != HubConnectionState.Connected)
+            return;
+
+        try
+        {
+            var snapshot = await _connection.InvokeAsync<TableNotes.Shared.PresenceSnapshot>("Subscribe", _noteId);
+            SnapshotReceived?.Invoke(this, snapshot);
+        }
+        catch
+        {
+            // Presence is best-effort.
+        }
     }
 
     private async Task ConnectAsync()

@@ -6,6 +6,12 @@ namespace TableNotes.Server.Api;
 
 public static class CellMarkingEndpoints
 {
+    private const int MaxItems = 20000;
+    private const int MaxColumnPropLength = 20;
+
+    private static readonly HashSet<string> AllowedColors =
+        new(StringComparer.OrdinalIgnoreCase) { "red", "green", "yellow" };
+
     public static void MapCellMarkingApi(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/pages/{page}/cellmarkings", async (string page, AppDbContext db) =>
@@ -25,6 +31,8 @@ public static class CellMarkingEndpoints
         {
             if (!PageNames.IsValid(page))
                 return Results.BadRequest(new { error = $"Unknown page '{page}'." });
+            if ((items?.Count ?? 0) > MaxItems)
+                return Results.BadRequest(new { error = $"At most {MaxItems} cell markings can be saved at once." });
 
             var validNoteIds = await db.Notes
                 .Where(n => n.PageName == page)
@@ -46,6 +54,10 @@ public static class CellMarkingEndpoints
                     continue;
                 if (string.IsNullOrWhiteSpace(item.ColumnProp) || string.IsNullOrWhiteSpace(item.Color))
                     continue;
+                if (item.ColumnProp.Length > MaxColumnPropLength || !item.ColumnProp.All(char.IsLetterOrDigit))
+                    continue;
+                if (!AllowedColors.Contains(item.Color.Trim()))
+                    continue;
                 if (!seen.Add((item.NoteId, item.RowPosition, item.ColumnProp)))
                     continue;
 
@@ -54,7 +66,7 @@ public static class CellMarkingEndpoints
                     NoteId = item.NoteId,
                     RowPosition = item.RowPosition,
                     ColumnProp = item.ColumnProp,
-                    Color = item.Color,
+                    Color = item.Color.Trim().ToLowerInvariant(),
                     UpdatedAtUtc = now
                 });
             }

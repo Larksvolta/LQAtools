@@ -274,13 +274,17 @@ public sealed partial class MainWindow : Window
             return;
 
         var text = serverBox.Text.Trim();
-        if (text.Length > 0
-            && (!Uri.TryCreate(text, UriKind.Absolute, out var uri)
-                || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)))
+        if (text.Length > 0)
         {
-            await ShowMessageDialog("Invalid URL",
-                "Enter a full http(s) URL such as http://localhost:5217, or leave it empty for local mode.");
-            return;
+            try
+            {
+                AppDataStores.ResolveUri(text);
+            }
+            catch (Exception ex)
+            {
+                await ShowMessageDialog("Invalid server URL", ex.Message);
+                return;
+            }
         }
 
         AppDataStores.ServerUrl = text.Length == 0 ? null : text;

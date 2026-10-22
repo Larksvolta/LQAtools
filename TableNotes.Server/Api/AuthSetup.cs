@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Security.Principal;
 using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.Authorization;
 using TableNotes.Server.Data;
@@ -19,13 +20,20 @@ public static class AuthSetup
     {
         services.AddAuthentication(NegotiateDefaults.AuthenticationScheme).AddNegotiate();
 
+        var allowedGroupSid = ResolveAllowedGroupSid(config);
+
         services.AddAuthorization(options =>
         {
             if (IsEnabled(config))
             {
-                options.FallbackPolicy = new AuthorizationPolicyBuilder()
-                    .RequireAuthenticatedUser()
-                    .Build();
+                var policy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser();
+
+                if (allowedGroupSid is not null)
+                {
+                    policy = policy.RequireAssertion(context => IsMemberOf(context.User, allowedGroupSid));
+                }
+
+                options.FallbackPolicy = policy.Build();
             }
         });
 
@@ -34,6 +42,13 @@ public static class AuthSetup
 
     public static void UseTableNotesAuth(this WebApplication app)
     {
+        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("TableNotes.Auth");
+
+        if (!IsEnabled(app.Configuration))
+            logger.LogWarning("Authentication is DISABLED (Auth:Enabled=false): every caller can read and modify all data.");
+        if (IsUserOverrideEnabled(app.Configuration))
+            logger.LogWarning("Identity override is ENABLED (Auth:AllowUserOverride=true): any loopback caller can act as any user.");
+
         app.UseAuthentication();
 
         if (IsUserOverrideEnabled(app.Configuration))
@@ -44,6 +59,34 @@ public static class AuthSetup
         if (IsEnabled(app.Configuration))
             app.UseMiddleware<UserActivityMiddleware>();
     }
+
+    private static string? ResolveAllowedGroupSid(IConfiguration config)
+    {
+        var group = config["Auth:AllowedGroup"];
+
+        // Claims from Windows authentication carry group SIDs; compare case-insensitively.
+        if (string.IsNullOrWhiteSpace(group))
+            return null;
+
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException("Auth:AllowedGroup requires Windows.");
+
+        try
+        {
+            var account = new NTAccount(group.Trim());
+            return ((SecurityIdentifier)account.Translate(typeof(SecurityIdentifier))).Value;
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Auth:AllowedGroup '{group}' could not be resolved to a Windows group: {ex.Message}", ex);
+        }
+    }
+
+    private static bool IsMemberOf(ClaimsPrincipal user, string groupSid) =>
+        user.HasClaim(c =>
+            (c.Type == ClaimTypes.GroupSid || c.Type == ClaimTypes.PrimaryGroupSid)
+            && string.Equals(c.Value, groupSid, StringComparison.OrdinalIgnoreCase));
 }
 
 public sealed class UserOverrideMiddleware
