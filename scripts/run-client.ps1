@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Launches the TableNotes client (WinUI) for local development.
+    Launches the LQAtools client (WinUI) for local development.
 
 .DESCRIPTION
     Opens the built client executable. Optionally points it at a server and/or
@@ -12,7 +12,7 @@
     in shared-server mode. Omit it to keep the current mode (local files unless
     server.txt already exists).
 
-    -User sets the TABLENOTES_USER environment variable for this instance. The
+    -User sets the LQATOOLS_USER environment variable for this instance. The
     server must have been started with Auth:AllowUserOverride=true for the name
     to take effect; otherwise the real Windows account is used.
 
@@ -47,12 +47,12 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
-$candidates = Get-ChildItem -Path (Join-Path $repoRoot "TableNotes\bin\$Configuration") `
-    -Recurse -Filter "TableNotes.exe" -ErrorAction SilentlyContinue |
+$candidates = Get-ChildItem -Path (Join-Path $repoRoot "LQAtools\bin\$Configuration") `
+    -Recurse -Filter "LQAtools.exe" -ErrorAction SilentlyContinue |
     Sort-Object FullName -Descending
 
 if (-not $candidates) {
-    throw "Client not built. Run: dotnet build `"$repoRoot\TableNotes.sln`" -c $Configuration"
+    throw "Client not built. Run: dotnet build `"$repoRoot\LQAtools.sln`" -c $Configuration"
 }
 
 $exe = $candidates[0].FullName
@@ -64,10 +64,10 @@ if ($Server) {
 }
 
 if ($User) {
-    $env:TABLENOTES_USER = $User
+    $env:LQATOOLS_USER = $User
     Write-Host "Simulating user '$User' (server must allow the override)." -ForegroundColor Yellow
 } else {
-    $env:TABLENOTES_USER = $null
+    $env:LQATOOLS_USER = $null
     Write-Host "Using the real Windows account." -ForegroundColor DarkGray
 }
 

@@ -1,15 +1,15 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Starts the TableNotes server for local development.
+    Starts the LQAtools server for local development.
 
 .DESCRIPTION
-    Runs the ASP.NET Core server (TableNotes.Server) bound to a URL. By default
+    Runs the ASP.NET Core server (LQAtools.Server) bound to a URL. By default
     it uses Windows Integrated Authentication, so anonymous API calls are
     rejected with 401.
 
     With -AllowUserOverride it also enables the dev-only identity override:
-    a loopback caller may send an X-TableNotes-User header to act as that user.
+    a loopback caller may send an X-LQAtools-User header to act as that user.
     This is meant for simulating multiple users on one machine. The override is
     ignored for non-loopback callers.
 
@@ -18,7 +18,7 @@
     Use http://0.0.0.0:5217 to accept connections from the LAN.
 
 .PARAMETER AllowUserOverride
-    Enable the dev-only X-TableNotes-User identity override (loopback only).
+    Enable the dev-only X-LQAtools-User identity override (loopback only).
 
 .PARAMETER AllowedGroup
     Optional Windows/AD group name. When set, only members of that group may use
@@ -53,7 +53,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$project  = Join-Path $repoRoot "TableNotes.Server\TableNotes.Server.csproj"
+$project  = Join-Path $repoRoot "LQAtools.Server\LQAtools.Server.csproj"
 
 if (-not (Test-Path -LiteralPath $project)) {
     throw "Server project not found at '$project'."
@@ -63,7 +63,7 @@ $env:Auth__AllowUserOverride = if ($AllowUserOverride) { "true" } else { $null }
 $env:Auth__AllowedGroup = if ($AllowedGroup) { $AllowedGroup } else { $null }
 $env:Security__AllowInsecureRemote = if ($AllowInsecureRemote) { "true" } else { $null }
 if ($AllowUserOverride) {
-    Write-Host "Identity override ENABLED (loopback callers may set X-TableNotes-User)." -ForegroundColor Yellow
+    Write-Host "Identity override ENABLED (loopback callers may set X-LQAtools-User)." -ForegroundColor Yellow
 } else {
     Write-Host "Strict Windows auth: anonymous API calls are rejected (401)." -ForegroundColor DarkGray
 }

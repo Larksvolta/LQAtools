@@ -3,10 +3,10 @@ bin/
 obj/
 
 ## Server local runtime data (SQLite db + blobs)
-TableNotes.Server/Storage/tablenotes.db
-TableNotes.Server/Storage/tablenotes.db-shm
-TableNotes.Server/Storage/tablenotes.db-wal
-TableNotes.Server/Storage/blobs/
+LQAtools.Server/Storage/lqatools.db
+LQAtools.Server/Storage/lqatools.db-shm
+LQAtools.Server/Storage/lqatools.db-wal
+LQAtools.Server/Storage/blobs/
 
 ## Client local config written at runtime
 server.txt
