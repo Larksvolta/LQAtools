@@ -82,6 +82,11 @@ Start the server with `-AllowUserOverride`, then launch one client per user:
 .\scripts\run-client.ps1 -Server http://localhost:5217 -User Bob
 ```
 
+For a one-step demo, run `.\run-demo.cmd` from the repository root. It starts
+the server with the identity override and two clients as Alice and Bob.
+Pass other names as arguments: `.\run-demo.cmd Carol Dave`. Port 5217 must be
+free when it starts.
+
 Each client appears to the server as a different user, so selections,
 presence and edits can be tested side by side. The simulated name is set in
 `LQATOOLS_USER` for the launched client process.
