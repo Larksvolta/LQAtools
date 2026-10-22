@@ -9,6 +9,9 @@ public partial class MainViewModel : ObservableObject
     public NotePageViewModel BugTrackerVm { get; }
     public NotePageViewModel ChangelogVm { get; }
     public NotePageViewModel TextFilesVm { get; }
+    public NotePageViewModel GlossaryVm { get; }
+    public NotePageViewModel TasksVm { get; }
+    public NotePageViewModel ComplianceVm { get; }
     public TeamLeadViewModel TeamLeadVm { get; }
 
     public MainViewModel()
@@ -17,6 +20,9 @@ public partial class MainViewModel : ObservableObject
         BugTrackerVm = new NotePageViewModel("BugTracker");
         ChangelogVm = new NotePageViewModel("Changelog");
         TextFilesVm = new NotePageViewModel("TextFiles");
+        GlossaryVm = new NotePageViewModel("Glossary");
+        TasksVm = new NotePageViewModel("Tasks");
+        ComplianceVm = new NotePageViewModel("Compliance");
         TeamLeadVm = new TeamLeadViewModel();
     }
 
@@ -27,6 +33,9 @@ public partial class MainViewModel : ObservableObject
         await BugTrackerVm.LoadNotesAsync();
         await ChangelogVm.LoadNotesAsync();
         await TextFilesVm.LoadNotesAsync();
+        await GlossaryVm.LoadNotesAsync();
+        await TasksVm.LoadNotesAsync();
+        await ComplianceVm.LoadNotesAsync();
         await TeamLeadVm.LoadAsync();
     }
 
@@ -36,6 +45,9 @@ public partial class MainViewModel : ObservableObject
         await BugTrackerVm.ReloadStoreAsync();
         await ChangelogVm.ReloadStoreAsync();
         await TextFilesVm.ReloadStoreAsync();
+        await GlossaryVm.ReloadStoreAsync();
+        await TasksVm.ReloadStoreAsync();
+        await ComplianceVm.ReloadStoreAsync();
         await TeamLeadVm.LoadAsync();
     }
 }
