@@ -33,7 +33,6 @@ public sealed partial class NotePage : UserControl
     private static readonly Dictionary<string, string> _savedMarkings = new();
     private IDataStore? _dataStore;
     private readonly Dictionary<(string NoteFile, string BugId), HashSet<string>> _bugLanguagesWithShots = new();
-    private readonly Dictionary<TableRow, HashSet<string>> _diffCells = new();
     private bool _diffVisualsPending;
     private bool _rowsCleared;
     private readonly Dictionary<(string NoteFileName, string RowNumber), (Guid NoteId, int RowIndex, string ColumnProp, TableNote ChangelogNote)> _changelogRevertMap = new();
@@ -2862,7 +2861,7 @@ public sealed partial class NotePage : UserControl
 
             ApplyCellBackground(args.ItemContainer, args.ItemIndex, _tableView!.Columns[colIndex], brush);
 
-            if (isChangelog && row.Col8 != row.Col9 && (prop == "Col8" || prop == "Col9"))
+            if (isChangelog && (prop == "Col8" || prop == "Col9"))
             {
                 var col = _tableView!.Columns[colIndex];
                 var cell = FindTableViewCell(args.ItemContainer, args.ItemIndex, col)
@@ -2878,18 +2877,8 @@ public sealed partial class NotePage : UserControl
 
     private void ComputeDiff()
     {
-        _diffCells.Clear();
-
         var vm = GetVm();
         if (vm?.PageName != "Changelog") return;
-
-        foreach (var row in vm.Rows)
-        {
-            if (row.Col8 != row.Col9)
-            {
-                _diffCells[row] = new HashSet<string> { "Col8", "Col9" };
-            }
-        }
 
         _diffVisualsPending = true;
         UpdateDiffVisuals();
@@ -3001,9 +2990,17 @@ public sealed partial class NotePage : UserControl
     private static void ApplyDiffToCell(TableViewCell cell, TableRow row, bool isActualResult)
     {
         var tb = new TextBlock { TextWrapping = TextWrapping.Wrap };
-        var oldText = row.Col8;
-        var newText = row.Col9;
-        BuildDiffInlines(tb, oldText, newText, isActualResult);
+        if (row.Col8 != row.Col9)
+        {
+            var oldText = row.Col8;
+            var newText = row.Col9;
+            BuildDiffInlines(tb, oldText, newText, isActualResult);
+        }
+        else
+        {
+            tb.Text = isActualResult ? row.Col8 : row.Col9;
+        }
+
         cell.Content = tb;
     }
 
@@ -3015,7 +3012,6 @@ public sealed partial class NotePage : UserControl
         for (int i = 0; i < vm.Rows.Count; i++)
         {
             var row = vm.Rows[i];
-            if (!_diffCells.ContainsKey(row)) continue;
 
             for (int ci = 0; ci < _columns.Length; ci++)
             {
