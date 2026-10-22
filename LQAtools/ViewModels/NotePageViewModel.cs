@@ -35,6 +35,7 @@ public partial class NotePageViewModel : ObservableObject
     public bool IsChangelog => PageName == "Changelog";
     public bool IsTextFiles => PageName == "TextFiles";
     public bool IsBugTracker => PageName == "BugTracker";
+    public bool IsTasks => PageName == "Tasks";
 
     public static string GetChangelogNoteTitle(string columnProp) => columnProp switch
     {
@@ -91,6 +92,12 @@ public partial class NotePageViewModel : ObservableObject
         Notes.Clear();
         foreach (var n in notes)
             Notes.Add(n);
+
+        if (Notes.Count == 0 && PageName == "Tasks")
+        {
+            var note = await _dataStore.CreateNoteAsync("Tasks");
+            Notes.Add(note);
+        }
 
         if (Notes.Count > 0 && SelectedNote is null)
             SelectedNote = Notes[0];
@@ -168,7 +175,7 @@ public partial class NotePageViewModel : ObservableObject
     [RelayCommand]
     private async Task NewNote()
     {
-        if (PageName is "Changelog" or "TextFiles" or "BugTracker") return;
+        if (PageName is "Changelog" or "TextFiles" or "BugTracker" or "Tasks") return;
         var note = await _dataStore.CreateNoteAsync("New Note");
         Notes.Insert(0, note);
         SelectedNote = note;
@@ -206,7 +213,7 @@ public partial class NotePageViewModel : ObservableObject
     [RelayCommand]
     private async Task DeleteNote()
     {
-        if (PageName is "Changelog" or "TextFiles" or "BugTracker") return;
+        if (PageName is "Changelog" or "TextFiles" or "BugTracker" or "Tasks") return;
         if (SelectedNote is null) return;
 
         var toRemove = SelectedNote;
@@ -231,12 +238,15 @@ public partial class NotePageViewModel : ObservableObject
     private void AddRow()
     {
         var row = new TableRow();
-        if (PageName == "BugTracker")
+        if (PageName is "BugTracker" or "Tasks")
         {
             row.Col1 = (Rows.Count + 1).ToString();
             row.Col2 = Environment.UserName;
             row.Col3 = DateTime.Now.ToString("yyyy/MM/dd");
         }
+        if (PageName is "BugTracker" or "Tasks")
+            SelectedRowIndex = Rows.Count;
+
         Rows.Add(row);
     }
 

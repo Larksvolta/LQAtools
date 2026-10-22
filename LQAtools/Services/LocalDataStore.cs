@@ -95,6 +95,16 @@ public sealed class LocalDataStore : IDataStore
             return;
         }
 
+        if (PageName == "Tasks")
+        {
+            if (notes.Count == 0)
+            {
+                notes.Add(new TableNote { Title = "Tasks", FileName = "Tasks.xlsx" });
+                await _excel.SaveIndexAsync(notes);
+            }
+            return;
+        }
+
         if (PageName != "Checklist")
             return;
 

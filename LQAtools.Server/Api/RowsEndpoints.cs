@@ -112,6 +112,10 @@ public static class RowsEndpoints
         PageNames.BugTracker => (await db.BugTrackerRows.AsNoTracking()
             .Where(r => r.NoteId == note.Id).OrderBy(r => r.Position).ToListAsync())
             .Cast<INoteRow>().ToList(),
+        PageNames.Glossary or PageNames.Tasks or PageNames.Compliance =>
+            (await db.GenericRows.AsNoTracking()
+                .Where(r => r.NoteId == note.Id).OrderBy(r => r.Position).ToListAsync())
+            .Cast<INoteRow>().ToList(),
         _ => new List<INoteRow>()
     };
 
@@ -131,6 +135,11 @@ public static class RowsEndpoints
             case PageNames.BugTracker:
                 await db.BugTrackerRows.Where(r => r.NoteId == note.Id).ExecuteDeleteAsync();
                 break;
+            case PageNames.Glossary:
+            case PageNames.Tasks:
+            case PageNames.Compliance:
+                await db.GenericRows.Where(r => r.NoteId == note.Id).ExecuteDeleteAsync();
+                break;
         }
     }
 
@@ -149,6 +158,11 @@ public static class RowsEndpoints
                 break;
             case PageNames.BugTracker:
                 db.BugTrackerRows.AddRange(rows.Cast<BugTrackerRow>());
+                break;
+            case PageNames.Glossary:
+            case PageNames.Tasks:
+            case PageNames.Compliance:
+                db.GenericRows.AddRange(rows.Cast<GenericRow>());
                 break;
         }
     }

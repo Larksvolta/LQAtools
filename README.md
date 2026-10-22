@@ -1,7 +1,7 @@
 # LQAtools
 
-LQAtools is a Windows localization QA tool with four workspaces: Checklist,
-Bug Tracker, Changelog and Text Files. It runs either against local files or
+LQAtools is a Windows localization QA tool with seven workspaces: Checklist,
+Bug Tracker, Changelog, Text Files, Glossary, Tasks and Compliance. It runs either against local files or
 against a shared ASP.NET Core server, so several people can work on the same
 data at once.
 

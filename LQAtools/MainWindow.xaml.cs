@@ -17,7 +17,7 @@ public sealed partial class MainWindow : Window
     public MainViewModel ViewModel { get; } = new();
     private InputNonClientPointerSource? _nonClientInput;
     private readonly TabView _tabView = new() { IsAddTabButtonVisible = false };
-    private readonly NotePageBase[] _pages = new NotePageBase[4];
+    private readonly NotePageBase[] _pages = new NotePageBase[7];
     private TeamLeadPage? _teamLeadPage;
     private readonly MenuFlyoutSubItem _columnVisibilityItem = new() { Text = "Column Visibility" };
     private readonly MenuFlyoutItem _userItem = new() { IsEnabled = false };
@@ -56,17 +56,24 @@ public sealed partial class MainWindow : Window
         _tabView.Loaded += (_, _) => UpdateDragRegions();
         _tabView.SizeChanged += (_, _) => UpdateDragRegions();
 
-        var pageNames = new[] { "Checklist", "Bug Tracker", "Changelog", "Text Files" };
-        var viewModels = new[] { ViewModel.ChecklistVm, ViewModel.BugTrackerVm, ViewModel.ChangelogVm, ViewModel.TextFilesVm };
+        var pageNames = new[] { "Checklist", "Bug Tracker", "Changelog", "Text Files", "Glossary", "Tasks", "Compliance" };
+        var viewModels = new[]
+        {
+            ViewModel.ChecklistVm, ViewModel.BugTrackerVm, ViewModel.ChangelogVm,
+            ViewModel.TextFilesVm, ViewModel.GlossaryVm, ViewModel.TasksVm, ViewModel.ComplianceVm,
+        };
         NotePageBase[] pages =
         [
             new ChecklistPage(),
             new BugTrackerPage(),
             new ChangelogPage(),
             new TextFilesPage(),
+            new GlossaryPage(),
+            new TasksPage(),
+            new CompliancePage(),
         ];
 
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < pages.Length; i++)
         {
             var page = pages[i];
             page.DataContext = viewModels[i];
@@ -145,7 +152,7 @@ public sealed partial class MainWindow : Window
         Grid.SetRow(_pages[0], 2);
         RootGrid.Children.Add(_pages[0]);
 
-        for (int i = 1; i < 4; i++)
+        for (int i = 1; i < _pages.Length; i++)
         {
             _pages[i].Visibility = Visibility.Collapsed;
             Grid.SetRow(_pages[i], 2);

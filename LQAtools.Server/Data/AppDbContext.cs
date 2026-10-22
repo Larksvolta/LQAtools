@@ -12,6 +12,7 @@ public sealed class AppDbContext : DbContext
     public DbSet<TextFilesRow> TextFilesRows => Set<TextFilesRow>();
     public DbSet<ChangelogRow> ChangelogRows => Set<ChangelogRow>();
     public DbSet<BugTrackerRow> BugTrackerRows => Set<BugTrackerRow>();
+    public DbSet<GenericRow> GenericRows => Set<GenericRow>();
     public DbSet<CellMarking> CellMarkings => Set<CellMarking>();
     public DbSet<Screenshot> Screenshots => Set<Screenshot>();
 
@@ -39,6 +40,7 @@ public sealed class AppDbContext : DbContext
         ConfigureRows<TextFilesRow>(b.Entity<TextFilesRow>());
         ConfigureRows<ChangelogRow>(b.Entity<ChangelogRow>());
         ConfigureRows<BugTrackerRow>(b.Entity<BugTrackerRow>());
+        ConfigureRows<GenericRow>(b.Entity<GenericRow>());
 
         b.Entity<CellMarking>(e =>
         {

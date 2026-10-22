@@ -33,6 +33,7 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.EnsureCreated();
+    EnsureGenericRowsTable(db);
 }
 
 app.UseLQAtoolsHardening();
@@ -58,6 +59,50 @@ if (args.Contains("--import", StringComparer.OrdinalIgnoreCase))
 app.MapGet("/", () => Results.Redirect("/api/health"));
 
 app.Run();
+
+static void EnsureGenericRowsTable(AppDbContext db)
+{
+    const string createTable = """
+        CREATE TABLE IF NOT EXISTS "GenericRows" (
+            "Id" TEXT NOT NULL CONSTRAINT "PK_GenericRows" PRIMARY KEY,
+            "NoteId" TEXT NOT NULL,
+            "Position" INTEGER NOT NULL,
+            "Version" INTEGER NOT NULL,
+            "Col1" TEXT NOT NULL,
+            "Col2" TEXT NOT NULL,
+            "Col3" TEXT NOT NULL,
+            "Col4" TEXT NOT NULL,
+            "Col5" TEXT NOT NULL,
+            "Col6" TEXT NOT NULL,
+            "Col7" TEXT NOT NULL,
+            "Col8" TEXT NOT NULL,
+            "Col9" TEXT NOT NULL,
+            "Col10" TEXT NOT NULL,
+            "Col11" TEXT NOT NULL,
+            "Col12" TEXT NOT NULL,
+            "Col13" TEXT NOT NULL,
+            "Col14" TEXT NOT NULL,
+            "Col15" TEXT NOT NULL,
+            "Col16" TEXT NOT NULL,
+            "Col17" TEXT NOT NULL,
+            "Col18" TEXT NOT NULL,
+            "Col19" TEXT NOT NULL,
+            "Col20" TEXT NOT NULL,
+            "Col21" TEXT NOT NULL,
+            "Col22" TEXT NOT NULL,
+            "Col23" TEXT NOT NULL,
+            CONSTRAINT "FK_GenericRows_Notes_NoteId" FOREIGN KEY ("NoteId")
+                REFERENCES "Notes" ("Id") ON DELETE CASCADE
+        );
+        """;
+    const string createIndex = """
+        CREATE UNIQUE INDEX IF NOT EXISTS "IX_GenericRows_NoteId_Position"
+            ON "GenericRows" ("NoteId", "Position");
+        """;
+
+    db.Database.ExecuteSqlRaw(createTable);
+    db.Database.ExecuteSqlRaw(createIndex);
+}
 
 static string? GetArgValue(string[] args, string name)
 {

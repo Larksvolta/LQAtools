@@ -6,8 +6,14 @@ public static class PageNames
     public const string BugTracker = "BugTracker";
     public const string Changelog = "Changelog";
     public const string TextFiles = "TextFiles";
+    public const string Glossary = "Glossary";
+    public const string Tasks = "Tasks";
+    public const string Compliance = "Compliance";
 
-    public static readonly string[] All = { Checklist, BugTracker, Changelog, TextFiles };
+    public static readonly string[] All =
+    {
+        Checklist, BugTracker, Changelog, TextFiles, Glossary, Tasks, Compliance
+    };
 
     public static bool IsValid(string? page) =>
         page is not null && Array.IndexOf(All, page) >= 0;

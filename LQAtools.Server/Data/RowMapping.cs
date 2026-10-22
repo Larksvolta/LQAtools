@@ -10,6 +10,9 @@ public static class RowMapping
         PageNames.TextFiles => 6,
         PageNames.Changelog => 10,
         PageNames.BugTracker => 23,
+        PageNames.Glossary => 5,
+        PageNames.Tasks => 14,
+        PageNames.Compliance => 5,
         _ => 0
     };
 
@@ -19,6 +22,7 @@ public static class RowMapping
         PageNames.TextFiles => TextFilesToDto((TextFilesRow)row),
         PageNames.Changelog => ChangelogToDto((ChangelogRow)row),
         PageNames.BugTracker => BugTrackerToDto((BugTrackerRow)row),
+        PageNames.Glossary or PageNames.Tasks or PageNames.Compliance => GenericToDto((GenericRow)row),
         _ => throw new ArgumentOutOfRangeException(nameof(page), page, "Unknown page")
     };
 
@@ -59,6 +63,16 @@ public static class RowMapping
                 ObservedResult = dto.Col21, ExpectedResult = dto.Col22,
                 NeedsLanguageSpecificResults = dto.Col23
             },
+            PageNames.Glossary or PageNames.Tasks or PageNames.Compliance => new GenericRow
+            {
+                Id = id, NoteId = noteId, Position = position, Version = 1,
+                Col1 = dto.Col1, Col2 = dto.Col2, Col3 = dto.Col3, Col4 = dto.Col4,
+                Col5 = dto.Col5, Col6 = dto.Col6, Col7 = dto.Col7, Col8 = dto.Col8,
+                Col9 = dto.Col9, Col10 = dto.Col10, Col11 = dto.Col11, Col12 = dto.Col12,
+                Col13 = dto.Col13, Col14 = dto.Col14, Col15 = dto.Col15, Col16 = dto.Col16,
+                Col17 = dto.Col17, Col18 = dto.Col18, Col19 = dto.Col19, Col20 = dto.Col20,
+                Col21 = dto.Col21, Col22 = dto.Col22, Col23 = dto.Col23
+            },
             _ => throw new ArgumentOutOfRangeException(nameof(page), page, "Unknown page")
         };
     }
@@ -83,6 +97,17 @@ public static class RowMapping
         Col1 = r.Number, Col2 = r.Tester, Col3 = r.Date, Col4 = r.Type,
         Col5 = r.Description, Col6 = r.StringId, Col7 = r.Source,
         Col8 = r.ActualResult, Col9 = r.ExpectedResult, Col10 = r.Status
+    };
+
+    private static RowDto GenericToDto(GenericRow r) => new()
+    {
+        Id = r.Id, Position = r.Position, Version = r.Version,
+        Col1 = r.Col1, Col2 = r.Col2, Col3 = r.Col3, Col4 = r.Col4,
+        Col5 = r.Col5, Col6 = r.Col6, Col7 = r.Col7, Col8 = r.Col8,
+        Col9 = r.Col9, Col10 = r.Col10, Col11 = r.Col11, Col12 = r.Col12,
+        Col13 = r.Col13, Col14 = r.Col14, Col15 = r.Col15, Col16 = r.Col16,
+        Col17 = r.Col17, Col18 = r.Col18, Col19 = r.Col19, Col20 = r.Col20,
+        Col21 = r.Col21, Col22 = r.Col22, Col23 = r.Col23
     };
 
     private static RowDto BugTrackerToDto(BugTrackerRow r) => new()

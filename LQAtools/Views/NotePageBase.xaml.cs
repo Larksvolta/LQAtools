@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using CommunityToolkit.Mvvm.Messaging;
 using CommunityToolkit.WinUI.Controls;
@@ -92,6 +93,11 @@ public partial class NotePageBase : UserControl
     private static readonly SolidColorBrush _bugCellGrey = new(Windows.UI.Color.FromArgb(0xFF, 0x6F, 0x6F, 0x6F));
     private static readonly SolidColorBrush _bugCellYellow = new(Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xD2, 0x4D));
     private static readonly SolidColorBrush _bugCellBlack = new(Windows.UI.Color.FromArgb(0xFF, 0x00, 0x00, 0x00));
+
+    private TableView? _taskTableView;
+    private TableRow? _selectedTaskRow;
+    private readonly ObservableCollection<TableRow> _taskDetailRows = new();
+    private bool _taskDiffPending;
 
     private PresenceClient? _presence;
     private string _presenceNoteId = "";
@@ -205,6 +211,13 @@ public partial class NotePageBase : UserControl
         else if (vm.IsChangelog)
         {
             ComputeDiff();
+        }
+        else if (vm.IsTasks)
+        {
+            _selectedTaskRow = vm.Rows.FirstOrDefault();
+            if (_taskTableView is not null)
+                _taskTableView.SelectedItem = _selectedTaskRow;
+            PopulateTaskDetails(_selectedTaskRow);
         }
     }
 
@@ -327,7 +340,7 @@ public partial class NotePageBase : UserControl
     {
         if (args.NewValue is NotePageViewModel vm)
         {
-            if (vm.IsChangelog || vm.IsTextFiles || vm.IsBugTracker)
+            if (vm.IsChangelog || vm.IsTextFiles || vm.IsBugTracker || vm.IsTasks)
             {
                 NewNoteBtn.Visibility = Visibility.Collapsed;
                 DeleteNoteBtn.Visibility = Visibility.Collapsed;
@@ -578,6 +591,18 @@ public partial class NotePageBase : UserControl
 
     private void SetupSidebar(NotePageViewModel vm)
     {
+        if (vm.IsTasks)
+        {
+            NotesList.Visibility = Visibility.Collapsed;
+            NotesTree.Visibility = Visibility.Collapsed;
+            BugTrackerSidebar.Visibility = _sidebarExpanded ? Visibility.Visible : Visibility.Collapsed;
+            SaveNoteBtn.Visibility = Visibility.Collapsed;
+            AddRowBtn.Visibility = Visibility.Collapsed;
+            SetSidebarWidth(_sidebarExpanded);
+            PopulateTaskSidebar(vm);
+            return;
+        }
+
         if (vm.IsBugTracker)
         {
             NotesList.Visibility = Visibility.Collapsed;
@@ -667,6 +692,221 @@ public partial class NotePageBase : UserControl
 
         ApplyBugGroupVisibility();
         RebuildBugTrackerRows();
+    }
+
+    private void PopulateTaskSidebar(NotePageViewModel vm)
+    {
+        BugTrackerSidebar.Children.Clear();
+        BugTrackerSidebar.RowDefinitions.Clear();
+
+        BugTrackerSidebar.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        BugTrackerSidebar.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        BugTrackerSidebar.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var heading = new TextBlock
+        {
+            Text = "Tasks",
+            FontSize = 16,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 8),
+        };
+        Grid.SetRow(heading, 0);
+        BugTrackerSidebar.Children.Add(heading);
+
+        _taskTableView = BuildTaskListTable(vm);
+        Grid.SetRow(_taskTableView, 1);
+        BugTrackerSidebar.Children.Add(_taskTableView);
+
+        var footer = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            Margin = new Thickness(0, 8, 0, 0),
+        };
+        var saveBtn = new Button
+        {
+            Content = "Save",
+            Style = (Style)Application.Current.Resources["AccentButtonStyle"],
+        };
+        saveBtn.SetBinding(Button.CommandProperty, new Binding { Path = new PropertyPath("SaveNoteCommand") });
+        footer.Children.Add(saveBtn);
+        var addRowBtn = new Button { Content = "Add Row" };
+        addRowBtn.SetBinding(Button.CommandProperty, new Binding { Path = new PropertyPath("AddRowCommand") });
+        footer.Children.Add(addRowBtn);
+        Grid.SetRow(footer, 2);
+        BugTrackerSidebar.Children.Add(footer);
+
+        vm.Rows.CollectionChanged -= OnTaskRowsChanged;
+        vm.Rows.CollectionChanged += OnTaskRowsChanged;
+
+        if (_selectedTaskRow is null || !vm.Rows.Contains(_selectedTaskRow))
+            _selectedTaskRow = vm.Rows.FirstOrDefault();
+
+        _taskTableView.SelectedItem = _selectedTaskRow;
+        PopulateTaskDetails(_selectedTaskRow);
+    }
+
+    private TableView BuildTaskListTable(NotePageViewModel vm)
+    {
+        var textStyle = new Style(typeof(TextBlock));
+        textStyle.Setters.Add(new Setter(TextBlock.VerticalAlignmentProperty, VerticalAlignment.Center));
+        textStyle.Setters.Add(new Setter(TextBlock.MarginProperty, new Thickness(4, 0, 4, 0)));
+        textStyle.Setters.Add(new Setter(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis));
+
+        var table = new TableView
+        {
+            AutoGenerateColumns = false,
+            ShowExportOptions = false,
+            HeadersVisibility = TableViewHeadersVisibility.Columns,
+            HeaderRowHeight = 30,
+            HeaderRowMinHeight = 30,
+            RowMinHeight = 36,
+            SelectionMode = ListViewSelectionMode.Single,
+            CanSortColumns = false,
+            CanFilterColumns = false,
+            CanResizeColumns = false,
+            CanReorderColumns = false,
+            Width = 690,
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+
+        var defs = new (string Header, string Prop, double Width)[]
+        {
+            ("#", "Col1", 44),
+            ("Assignee", "Col2", 100),
+            ("Date", "Col3", 90),
+            ("Priority", "Col4", 80),
+            ("Summary", "Col5", 170),
+            ("Status", "Col6", 86),
+            ("Notes", "Col7", 120),
+        };
+
+        foreach (var (header, prop, width) in defs)
+        {
+            table.Columns.Add(new TableViewTextColumn
+            {
+                Header = header,
+                Tag = prop,
+                Binding = new Binding { Path = new PropertyPath(prop) },
+                ElementStyle = textStyle,
+                Width = new GridLength(width),
+            });
+        }
+
+        table.SelectionChanged += OnTaskSelectionChanged;
+        table.ItemsSource = vm.Rows;
+        return table;
+    }
+
+    private void OnTaskSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not TableView table || table.SelectedItem is not TableRow row)
+            return;
+
+        _selectedTaskRow = row;
+        PopulateTaskDetails(row);
+    }
+
+    private void OnTaskRowsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        var vm = GetVm();
+        if (vm?.IsTasks != true)
+            return;
+
+        if (e.Action == NotifyCollectionChangedAction.Reset)
+        {
+            vm.SelectedRowIndex = -1;
+            return;
+        }
+
+        if (vm.SelectedRowIndex < 0 || vm.SelectedRowIndex >= vm.Rows.Count)
+            return;
+
+        var target = vm.Rows[vm.SelectedRowIndex];
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!vm.Rows.Contains(target))
+                return;
+
+            _selectedTaskRow = target;
+            if (_taskTableView is not null)
+                _taskTableView.SelectedItem = target;
+
+            PopulateTaskDetails(target);
+        });
+    }
+
+    private void PopulateTaskDetails(TableRow? row)
+    {
+        _taskDetailRows.Clear();
+        if (row is not null)
+            _taskDetailRows.Add(row);
+
+        ComputeTaskDiff();
+    }
+
+    private void BuildTaskDetailsTable()
+    {
+        TableViewContainer.Children.Clear();
+
+        _tableView = new TableView
+        {
+            AutoGenerateColumns = false,
+            ShowExportOptions = false,
+            HeaderRowHeight = 32,
+        };
+
+        var wrapStyle = new Style(typeof(TextBlock));
+        wrapStyle.Setters.Add(new Setter(TextBlock.TextWrappingProperty, TextWrapping.Wrap));
+
+        foreach (var col in _columns)
+        {
+            var isTasksTranslation = col.Header == "French" || col.Header == "Italian" || col.Header == "German" || col.Header == "Spanish";
+            var tc = new TableViewTextColumn
+            {
+                Header = col.Header,
+                Tag = col.Prop,
+                Binding = new Binding
+                {
+                    Path = new PropertyPath(col.Prop),
+                    Mode = BindingMode.TwoWay,
+                    UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged,
+                },
+                ElementStyle = wrapStyle,
+                IsReadOnly = col.Header == "String ID" || (GetVm()?.IsTasks == true && isTasksTranslation),
+            };
+            tc.Width = col.Header switch
+            {
+                "String ID" => new GridLength(110),
+                _ => new GridLength(1, GridUnitType.Star),
+            };
+            _tableView.Columns.Add(tc);
+        }
+
+        _tableView.CellContextFlyout = new MenuFlyout();
+        _tableView.CellContextFlyoutOpening += OnCellContextFlyoutOpening;
+        _tableView.CellDoubleTapped += OnCellDoubleTapped;
+        _tableView.PreparingCellForEdit += OnPreparingCellForEdit;
+        _tableView.ContainerContentChanging += OnContainerContentChanging;
+        _tableView.LayoutUpdated += OnTableViewLayoutUpdated;
+        _tableView.CellSelectionChanged += OnTableViewCellSelectionChangedHandler;
+        _tableView.CellEditEnded += OnTaskCellEditEnded;
+
+        _tableView.ItemsSource = _taskDetailRows;
+
+        Grid.SetRow(_tableView, 0);
+        Grid.SetColumn(_tableView, 0);
+        TableViewContainer.Children.Add(_tableView);
+
+        ComputeTaskDiff();
+    }
+
+    private void OnTaskCellEditEnded(object? sender, TableViewCellEditEndedEventArgs e)
+    {
+        if (e.EditAction != TableViewEditAction.Commit)
+            return;
+
+        ComputeTaskDiff();
     }
 
     private void ToggleSort(string column)
@@ -2134,7 +2374,7 @@ public partial class NotePageBase : UserControl
 
         if (vm is not null)
         {
-            if (vm.IsBugTracker)
+            if (vm.IsBugTracker || vm.IsTasks)
             {
                 BugTrackerSidebar.Visibility = _sidebarExpanded ? Visibility.Visible : Visibility.Collapsed;
             }
@@ -2160,6 +2400,12 @@ public partial class NotePageBase : UserControl
         TableViewContainer.Children.Clear();
 
         _columns = ColumnDefs;
+
+        if (vm.IsTasks)
+        {
+            BuildTaskDetailsTable();
+            return;
+        }
 
         _tableView = new TableView
         {
@@ -2336,7 +2582,7 @@ public partial class NotePageBase : UserControl
     private void OnCellDoubleTapped(object? sender, TableViewCellDoubleTappedEventArgs e)
     {
         var vm = GetVm();
-        if (vm is null || vm.IsTextFiles || vm.IsBugTracker) return;
+        if (vm is null || vm.IsTextFiles || vm.IsBugTracker || vm.IsTasks) return;
 
         var colIndex = e.Slot.Column;
         if (colIndex < 0 || colIndex >= _columns.Length)
@@ -2370,6 +2616,24 @@ public partial class NotePageBase : UserControl
 
     private void OnPreparingCellForEdit(object? sender, TableViewPreparingCellForEditEventArgs e)
     {
+        var vm = GetVm();
+        if (vm?.IsTasks == true && _tableView is not null)
+        {
+            var ci = _tableView.Columns.IndexOf(e.Column);
+            if (ci >= 0 && ci < _columns.Length)
+            {
+                var h = _columns[ci].Header;
+                if (h == "French" || h == "Italian" || h == "German" || h == "Spanish" || h == "String ID")
+                {
+                    if (e.EditingElement is not null)
+                    {
+                        e.EditingElement.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+                    }
+                    return;
+                }
+            }
+        }
+
         if (e.Column is not TableViewTextColumn col || e.EditingElement is not TextBox textBox)
             return;
 
@@ -2794,6 +3058,7 @@ public partial class NotePageBase : UserControl
 
         var vm = GetVm();
         bool isChangelog = vm?.PageName == "Changelog";
+        bool isTasks = vm?.PageName == "Tasks";
 
         var maxCols = _tableView?.Columns.Count ?? 0;
         for (int colIndex = 0; colIndex < maxCols && colIndex < _columns.Length; colIndex++)
@@ -2819,10 +3084,27 @@ public partial class NotePageBase : UserControl
                 if (cell is not null)
                     ApplyDiffToCell(cell, row, header == "Actual Result");
             }
+            else if (isTasks && (prop == "Col9" || prop == "Col10"))
+            {
+                var col = _tableView!.Columns[colIndex];
+                var cell = FindTableViewCell(args.ItemContainer, args.ItemIndex, col)
+                        ?? FindTableViewCell(_tableView, args.ItemIndex, col);
+                if (cell is not null)
+                    ApplyTaskDiffToCell(cell, row, header == "Old Source");
+            }
 
             _remoteSelections.TryGetValue((args.ItemIndex, prop), out var colorHex);
             ApplyCellBorder(_tableView!, args.ItemIndex, prop, colorHex);
         }
+    }
+
+    private void ComputeTaskDiff()
+    {
+        var vm = GetVm();
+        if (vm?.IsTasks != true) return;
+
+        _taskDiffPending = true;
+        UpdateTaskDiffVisuals();
     }
 
     private void ComputeDiff()
@@ -2836,9 +3118,17 @@ public partial class NotePageBase : UserControl
 
     private void OnTableViewLayoutUpdated(object? sender, object e)
     {
-        if (!_diffVisualsPending) return;
-        _diffVisualsPending = false;
-        UpdateDiffVisuals();
+        if (_diffVisualsPending)
+        {
+            _diffVisualsPending = false;
+            UpdateDiffVisuals();
+        }
+
+        if (_taskDiffPending)
+        {
+            _taskDiffPending = false;
+            UpdateTaskDiffVisuals();
+        }
     }
 
     private static TableViewCell? FindTableViewCell(DependencyObject parent, int rowIndex, TableViewColumn col)
@@ -2954,6 +3244,32 @@ public partial class NotePageBase : UserControl
         cell.Content = tb;
     }
 
+    private static void ApplyTaskDiffToCell(TableViewCell cell, TableRow row, bool showOld)
+    {
+        var tb = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        if (row.Col10 != row.Col9)
+            BuildDiffInlines(tb, row.Col10, row.Col9, showOld);
+        else
+            tb.Text = showOld ? row.Col10 : row.Col9;
+
+        cell.Content = tb;
+    }
+
+    private void UpdateTaskDiffVisuals()
+    {
+        var vm = GetVm();
+        if (vm?.IsTasks != true || _tableView is null || _selectedTaskRow is null)
+            return;
+
+        for (int ci = 0; ci < _columns.Length; ci++)
+        {
+            if (_columns[ci].Prop is not "Col9" and not "Col10") continue;
+            var cell = FindTableViewCell(_tableView, 0, _tableView.Columns[ci]);
+            if (cell is null) continue;
+            ApplyTaskDiffToCell(cell, _selectedTaskRow, _columns[ci].Header == "Old Source");
+        }
+    }
+
     private void UpdateDiffVisuals()
     {
         var vm = GetVm();
@@ -3026,28 +3342,31 @@ public partial class NotePageBase : UserControl
             }
         };
 
-        var nextEditNum = (MainWindow.Instance?.ViewModel.ChangelogVm.Rows.Count ?? 0) + 1;
+        var isTasks = GetVm()?.IsTasks == true;
+        var nextEditNum = (isTasks
+            ? MainWindow.Instance?.ViewModel.TasksVm.Rows.Count ?? 0
+            : MainWindow.Instance?.ViewModel.ChangelogVm.Rows.Count ?? 0) + 1;
 
         var stringIdBox = new TextBox
         {
             Header = "String ID",
-            Text = row.Col1,
+            Text = isTasks ? row.Col8 : row.Col1,
             IsReadOnly = true,
             TextWrapping = TextWrapping.Wrap,
         };
 
         var sourceBox = new TextBox
         {
-            Header = "Source",
-            Text = row.Col2,
+            Header = isTasks ? "New Source" : "Source",
+            Text = isTasks ? row.Col9 : row.Col2,
             IsReadOnly = true,
             TextWrapping = TextWrapping.Wrap,
         };
 
         var actualBox = new TextBox
         {
-            Header = "Actual Result",
-            Text = currentValue,
+            Header = isTasks ? "Old Source" : "Actual Result",
+            Text = isTasks ? row.Col10 : currentValue,
             IsReadOnly = true,
             TextWrapping = TextWrapping.Wrap,
             Height = 80,
@@ -3055,7 +3374,9 @@ public partial class NotePageBase : UserControl
 
         var expectedBox = new TextBox
         {
-            Header = "Expected Result",
+            Header = isTasks
+                ? (header == "Old Source" ? "Old Source" : "New Source")
+                : "Expected Result",
             Text = currentValue,
             TextWrapping = TextWrapping.Wrap,
             Height = 80,
@@ -3065,13 +3386,14 @@ public partial class NotePageBase : UserControl
         stack.Children.Add(typeCombo);
         stack.Children.Add(descBox);
         stack.Children.Add(stringIdBox);
-        stack.Children.Add(sourceBox);
+        if (!isTasks)
+            stack.Children.Add(sourceBox);
         stack.Children.Add(actualBox);
         stack.Children.Add(expectedBox);
 
         var dialog = new ContentDialog
         {
-            Title = $"Text Edit - {nextEditNum}",
+            Title = isTasks ? $"Task Edit - {nextEditNum}" : $"Text Edit - {nextEditNum}",
             Content = stack,
             PrimaryButtonText = "Save",
             CloseButtonText = "Cancel",

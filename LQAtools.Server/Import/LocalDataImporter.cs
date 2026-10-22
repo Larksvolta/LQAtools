@@ -285,6 +285,11 @@ public sealed class LocalDataImporter
             case PageNames.BugTracker:
                 await _db.BugTrackerRows.Where(r => r.NoteId == note.Id).ExecuteDeleteAsync();
                 break;
+            case PageNames.Glossary:
+            case PageNames.Tasks:
+            case PageNames.Compliance:
+                await _db.GenericRows.Where(r => r.NoteId == note.Id).ExecuteDeleteAsync();
+                break;
         }
     }
 
@@ -303,6 +308,11 @@ public sealed class LocalDataImporter
                 break;
             case PageNames.BugTracker:
                 _db.BugTrackerRows.Add((BugTrackerRow)row);
+                break;
+            case PageNames.Glossary:
+            case PageNames.Tasks:
+            case PageNames.Compliance:
+                _db.GenericRows.Add((GenericRow)row);
                 break;
         }
     }

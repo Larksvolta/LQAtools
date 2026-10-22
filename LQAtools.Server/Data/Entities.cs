@@ -111,6 +111,38 @@ public sealed class BugTrackerRow : INoteRow
     public string NeedsLanguageSpecificResults { get; set; } = string.Empty;
 }
 
+public sealed class GenericRow : INoteRow
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid NoteId { get; set; }
+    public int Position { get; set; }
+    public int Version { get; set; } = 1;
+
+    public string Col1 { get; set; } = string.Empty;
+    public string Col2 { get; set; } = string.Empty;
+    public string Col3 { get; set; } = string.Empty;
+    public string Col4 { get; set; } = string.Empty;
+    public string Col5 { get; set; } = string.Empty;
+    public string Col6 { get; set; } = string.Empty;
+    public string Col7 { get; set; } = string.Empty;
+    public string Col8 { get; set; } = string.Empty;
+    public string Col9 { get; set; } = string.Empty;
+    public string Col10 { get; set; } = string.Empty;
+    public string Col11 { get; set; } = string.Empty;
+    public string Col12 { get; set; } = string.Empty;
+    public string Col13 { get; set; } = string.Empty;
+    public string Col14 { get; set; } = string.Empty;
+    public string Col15 { get; set; } = string.Empty;
+    public string Col16 { get; set; } = string.Empty;
+    public string Col17 { get; set; } = string.Empty;
+    public string Col18 { get; set; } = string.Empty;
+    public string Col19 { get; set; } = string.Empty;
+    public string Col20 { get; set; } = string.Empty;
+    public string Col21 { get; set; } = string.Empty;
+    public string Col22 { get; set; } = string.Empty;
+    public string Col23 { get; set; } = string.Empty;
+}
+
 public sealed class CellMarking
 {
     public Guid Id { get; set; } = Guid.NewGuid();

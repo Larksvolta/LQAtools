@@ -132,6 +132,13 @@ public class ExcelService
         "BugTracker" => ["#", "Username", "Date", "Type", "Summary", "Description", "Steps to reproduce", "French", "Italian", "German", "Spanish", "Bug Status", "French Observed Result", "French Expected Result", "Italian Observed Result", "Italian Expected Result", "German Observed Result", "German Expected Result", "Spanish Observed Result", "Spanish Expected Result", "Observed Result", "Expected Result", "Needs Language Specific Results"],
         "Changelog" => ["#", "Tester", "Date", "Type", "Description", "String ID", "Source", "Actual Result", "Expected Result", "Status"],
         "TextFiles" => ["String ID", "Source", "French", "Italian", "German", "Spanish"],
+        "Glossary" => ["Term", "French", "Italian", "German", "Spanish"],
+        "Compliance" => ["Term", "French", "Italian", "German", "Spanish"],
+        "Tasks" =>
+        [
+            "#", "Assignee", "Date", "Priority", "Summary", "Status", "Notes",
+            "String ID", "New Source", "Old Source", "French", "Italian", "German", "Spanish",
+        ],
         _ => ["Column 1", "Column 2", "Column 3", "Column 4", "Column 5"]
     };
 
