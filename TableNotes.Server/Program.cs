@@ -14,6 +14,8 @@ connectionString = ResolveSqlitePath(connectionString, contentRoot);
 
 builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlite(connectionString));
 builder.Services.AddTableNotesAuth(builder.Configuration);
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<TableNotes.Server.Api.PresenceRegistry>();
 builder.Services.AddScoped<LocalDataImporter>();
 builder.Services.AddSingleton<IBlobStore>(_ =>
 {
@@ -40,6 +42,7 @@ app.MapNotesApi();
 app.MapRowsApi();
 app.MapCellMarkingApi();
 app.MapScreenshotApi();
+app.MapPresenceApi();
 
 if (args.Contains("--import", StringComparer.OrdinalIgnoreCase))
 {

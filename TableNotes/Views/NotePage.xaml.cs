@@ -94,6 +94,11 @@ public sealed partial class NotePage : UserControl
     private static readonly SolidColorBrush _bugCellYellow = new(Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xD2, 0x4D));
     private static readonly SolidColorBrush _bugCellBlack = new(Windows.UI.Color.FromArgb(0xFF, 0x00, 0x00, 0x00));
 
+    private PresenceClient? _presence;
+    private string _presenceNoteId = "";
+    private readonly Dictionary<(int Row, string Prop), string> _remoteSelections = new();
+    private readonly HashSet<(int Row, string Prop)> _paintedRemote = new();
+
     private static readonly double[] _bugColumnWidths =
     {
         42, 200, 96,
@@ -269,6 +274,106 @@ public sealed partial class NotePage : UserControl
         }
     }
 
+    private async void StartPresence(NotePageViewModel vm)
+    {
+        if (!AppDataStores.IsRemote || AppDataStores.ServerUrl is not { } serverUrl)
+            return;
+
+        if (_presence is not null)
+            await _presence.DisposeAsync();
+        _remoteSelections.Clear();
+        RepaintRemoteBorders();
+
+
+        var self = await vm.DataStore.GetCurrentUserAsync();
+        var client = new PresenceClient(() => self);
+        client.SnapshotReceived += OnPresenceSnapshot;
+        client.PresenceReceived += OnRemotePresence;
+        client.UserLeft += OnUserLeft;
+        _presence = client;
+
+        _presenceNoteId = vm.SelectedNote?.FileName ?? "";
+        await client.StartAsync(serverUrl, _presenceNoteId);
+    }
+
+    private string PresenceNoteId()
+    {
+        var vm = GetVm();
+        return vm?.SelectedNote?.FileName ?? "";
+    }
+
+    private void OnPresenceSnapshot(object? sender, TableNotes.Shared.PresenceSnapshot snapshot)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            _remoteSelections.Clear();
+            foreach (var s in snapshot.Selections)
+            {
+                if (s.User == CurrentPresenceUser()) continue;
+                _remoteSelections[((int)s.RowPosition, s.ColumnProp)] = TableNotes.Shared.UserColors.For(s.User);
+            }
+            RepaintRemoteBorders();
+        });
+    }
+
+    private void OnRemotePresence(object? sender, RemotePresence p)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (p.User == CurrentPresenceUser()) return;
+            if (!string.IsNullOrEmpty(_presenceNoteId) && p.NoteId != _presenceNoteId) return;
+
+            var key = (p.RowPosition, p.ColumnProp);
+            if (p.Active)
+                _remoteSelections[key] = TableNotes.Shared.UserColors.For(p.User);
+            else
+                _remoteSelections.Remove(key);
+
+            RepaintRemoteBorders();
+        });
+    }
+
+    private void OnUserLeft(object? sender, string user)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            var stale = _remoteSelections.Where(kv => kv.Value == TableNotes.Shared.UserColors.For(user))
+                                         .Select(kv => kv.Key).ToList();
+            if (stale.Count == 0) return;
+            foreach (var key in stale)
+                _remoteSelections.Remove(key);
+            RepaintRemoteBorders();
+        });
+    }
+
+    private string? _presenceUser;
+    private string CurrentPresenceUser() => _presenceUser ??= ResolvePresenceUser();
+    private string ResolvePresenceUser()
+    {
+        var overrideUser = Environment.GetEnvironmentVariable("TABLENOTES_USER");
+        if (!string.IsNullOrWhiteSpace(overrideUser))
+            return overrideUser.Trim();
+        return Environment.UserName;
+    }
+
+    private void RepaintRemoteBorders()
+    {
+        if (_tableView is null) return;
+
+        foreach (var key in _paintedRemote.ToList())
+        {
+            if (_remoteSelections.ContainsKey(key)) continue;
+            ApplyCellBorder(_tableView, key.Row, key.Prop, null);
+            _paintedRemote.Remove(key);
+        }
+
+        foreach (var kv in _remoteSelections)
+        {
+            ApplyCellBorder(_tableView, kv.Key.Row, kv.Key.Prop, kv.Value);
+            _paintedRemote.Add(kv.Key);
+        }
+    }
+
     private void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
     {
         if (args.NewValue is NotePageViewModel vm)
@@ -285,6 +390,7 @@ public sealed partial class NotePage : UserControl
 
             _dataStore = vm.DataStore;
             _ = LoadMarkingsAsync(vm.DataStore);
+            StartPresence(vm);
         }
     }
 
@@ -2225,6 +2331,7 @@ public sealed partial class NotePage : UserControl
         _tableView.PreparingCellForEdit += OnPreparingCellForEdit;
         _tableView.ContainerContentChanging += OnContainerContentChanging;
         _tableView.LayoutUpdated += OnTableViewLayoutUpdated;
+        _tableView.CellSelectionChanged += OnTableViewCellSelectionChangedHandler;
 
         if (vm.PageName == "Changelog")
         _tableView.CellEditEnded += OnChangelogCellEditEnded;
@@ -2660,6 +2767,69 @@ public sealed partial class NotePage : UserControl
         }
     }
 
+    private void ApplyCellBorder(TableView table, int row, string prop, string? colorHex)
+    {
+        var colIndex = Array.FindIndex(_columns, c => c.Prop == prop);
+        if (colIndex < 0 || colIndex >= table.Columns.Count)
+            return;
+
+        var cell = FindTableViewCell(table, row, table.Columns[colIndex]);
+        if (cell is null)
+            return;
+
+        if (string.IsNullOrEmpty(colorHex))
+        {
+            cell.BorderBrush = null;
+            cell.BorderThickness = new Thickness(0);
+            cell.CornerRadius = new CornerRadius(0);
+        }
+        else
+        {
+            cell.BorderBrush = new SolidColorBrush(ParseColor(colorHex));
+            cell.BorderThickness = new Thickness(2);
+            cell.CornerRadius = new CornerRadius(4);
+        }
+    }
+
+    private static Windows.UI.Color ParseColor(string hex)
+    {
+        var s = hex.TrimStart('#');
+        return Windows.UI.Color.FromArgb(0xFF,
+            Convert.ToByte(s.Substring(0, 2), 16),
+            Convert.ToByte(s.Substring(2, 2), 16),
+            Convert.ToByte(s.Substring(4, 2), 16));
+    }
+
+    private void OnTableViewCellSelectionChangedHandler(object? sender, WinUI.TableView.TableViewCellSelectionChangedEventArgs e)
+    {
+        OnTableViewCellSelectionChanged(sender as TableView, e);
+    }
+
+    private void OnTableViewCellSelectionChanged(TableView? sender, WinUI.TableView.TableViewCellSelectionChangedEventArgs e)
+    {
+        if (_presence is null || !AppDataStores.IsRemote)
+            return;
+
+        var noteId = PresenceNoteId();
+        if (string.IsNullOrEmpty(noteId))
+            return;
+
+        if (_presenceNoteId != noteId)
+        {
+            _presenceNoteId = noteId;
+            _remoteSelections.Clear();
+            RepaintRemoteBorders();
+            _ = _presence.SwitchNoteAsync(noteId);
+        }
+
+        foreach (var slot in e.AddedCells)
+        {
+            if (slot.Column < 0 || slot.Column >= _columns.Length) continue;
+            _ = _presence.SelectAsync(noteId, slot.Row, _columns[slot.Column].Prop);
+            break;
+        }
+    }
+
     private void OnContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
         if (args.InRecycleQueue || args.Item is not TableRow row)
@@ -2700,6 +2870,9 @@ public sealed partial class NotePage : UserControl
                 if (cell is not null)
                     ApplyDiffToCell(cell, row, header == "Actual Result");
             }
+
+            _remoteSelections.TryGetValue((args.ItemIndex, prop), out var colorHex);
+            ApplyCellBorder(_tableView!, args.ItemIndex, prop, colorHex);
         }
     }
 
